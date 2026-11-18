@@ -41,7 +41,7 @@
   const now = (() => {
     const real = new Date();
     const d = qp ? L.parseDate(qp) : real;
-    const [h, m] = nowQp && /^d{1,2}:d{2}$/.test(nowQp) ? nowQp.split(":").map(Number) : [real.getHours(), real.getMinutes()];
+    const [h, m] = nowQp && /^\d{1,2}:\d{2}$/.test(nowQp) ? nowQp.split(":").map(Number) : [real.getHours(), real.getMinutes()];
     d.setHours(h, m, 0, 0);
     return d;
   })();

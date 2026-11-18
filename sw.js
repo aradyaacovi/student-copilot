@@ -1,11 +1,11 @@
 /*
  * Service worker – makes the app installable and usable offline.
  *
- * App shell (HTML, CSS, JS, icons, data file): cache first, refreshed in the background.
- * Everything else (Supabase, fonts): straight to the network, with a cached copy as fallback.
- * Supabase requests are never cached – stale academic data would be worse than none.
+ * Code and semester data: the network first (2.5s), falling back to the cache, so an update
+ * is never a reload behind. Images: cache first, since they do not change under the same name.
+ * Supabase requests are never cached – a stale deadline is worse than an offline message.
  */
-const VERSION = "v5";
+const VERSION = "v6";
 const SHELL = "shell-" + VERSION;
 const RUNTIME = "runtime-" + VERSION;
 
@@ -50,13 +50,21 @@ self.addEventListener("fetch", (e) => {
   if (url.hostname.endsWith(".supabase.co")) return;
 
   if (isShell(url)) {
+    // Code and data: the network first, with a short timeout, falling back to the cache.
+    // Cache-first was serving yesterday's app after an update – and an app that shows the
+    // wrong time or an old deadline is worse than one that waits a second for the network.
+    // Images never change under the same name, so they stay cache-first.
+    const isAsset = /\.(png|svg|webmanifest)$/.test(url.pathname);
     e.respondWith((async () => {
       const cached = await caches.match(request, { ignoreSearch: true });
+      if (isAsset && cached) return cached;
       const fresh = fetch(request).then((res) => {
         if (res.ok) caches.open(SHELL).then((c) => c.put(request, res.clone()));
         return res;
       }).catch(() => null);
-      return cached || (await fresh) || new Response("offline", { status: 503 });
+      const timeout = new Promise((r) => setTimeout(() => r(null), 2500));
+      const res = cached ? await Promise.race([fresh, timeout]) : await fresh;
+      return res || cached || new Response("offline", { status: 503 });
     })());
     return;
   }

@@ -54,6 +54,8 @@
       });
     };
     if (reg.waiting && navigator.serviceWorker.controller) { PWA.waiting = reg.waiting; set("update"); }
+    // look for a new version on every load, not only once an hour
+    reg.update().catch(() => {});
     track(reg.installing);
     reg.addEventListener("updatefound", () => track(reg.installing));
     setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
