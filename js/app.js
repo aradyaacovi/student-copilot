@@ -64,7 +64,7 @@
   const applyTheme = () => {
     const dark = state.theme === "dark" || (state.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    const look = state.look || "board"; if (look !== "board") document.documentElement.dataset.look = look; else delete document.documentElement.dataset.look;
+    const look = state.look || "spectrum"; if (look !== "spectrum") document.documentElement.dataset.look = look; else delete document.documentElement.dataset.look;
   };
   const r1 = (n) => (n === null || n === undefined ? "—" : (Math.round(n * 10) / 10).toString());
   const daysText = (d) => (d === 0 ? "היום" : d === 1 ? "מחר" : d < 0 ? `לפני ${-d} ימים` : `בעוד ${d} ימים`);
@@ -266,39 +266,74 @@
     </div>`;
   }
 
-  function viewToday() {
+  const ICONS = {
+    today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>',
+    schedule: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+    courses: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h7v14H4zM13 5h7v9h-7z"/></svg>',
+    grades: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>',
+  };
+
+  /** The panel that never leaves: one task, today's ribbon, today's numbers. */
+  function renderFocus() {
+    const el = document.getElementById("focus");
     const { todays, plan } = currentPlan();
+    const first = plan.today[0];
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-    const current = todays.find((s) => toMin(s.start) <= nowMin && toMin(s.end) > nowMin);
-    const upcoming = todays.filter((s) => toMin(s.start) > nowMin);
-    const sessLine = (s, pre) => `${pre} <b>${esc(s.course.short)} · ${L.SESSION_LABEL[s.session.type]}</b> ${s.start}–${s.end} <span class="muted">${esc(s.extra ? s.note : s.session.location || "")}</span>`;
-    const first = plan.today[0];
-    const restToday = plan.today.slice(1);
-    const behind = courses.reduce((s, c) => s + L.paceStatus(c, data.semester, now, state.seen).behind, 0);
+    const c = first && byId[first.courseId];
+    el.style.setProperty("--c", c ? c.color : "var(--accent)");
+
+    // the ribbon: classes that are still ahead, then the planned work
+    const ribbon = [
+      ...todays.filter((s) => toMin(s.end) > nowMin).map((s) => ({
+        time: s.start, title: s.course.short + " · " + L.SESSION_LABEL[s.session.type],
+        note: s.extra ? s.note : s.session.location || "", color: s.course.color,
+        live: toMin(s.start) <= nowMin,
+      })),
+      ...plan.today.map((t) => ({ time: null, title: t.title, note: hoursText(t.hours), color: ccolor(t.courseId), task: true })),
+    ];
+    const behind = courses.reduce((s, x) => s + L.paceStatus(x, data.semester, now, state.seen).behind, 0);
     const nextDl = deadlineItems().find((d) => !d.moedB && !state.done[d.id] && L.daysUntil(d.date, now) >= 0);
-    const stat = (v, l, cls) => `<div class="hero-stat"><b class="${cls || ""}">${v}</b><span>${l}</span></div>`;
-    const hero = `<div class="hero">
-      <div class="hero-body">
-        <div class="hero-label">${first ? "עכשיו" : "סיימת להיום"}</div>
-        ${first ? `<div class="hero-main">${chip(first.courseId)} ${esc(first.title)}</div>
-          <div class="hero-sub">${esc(first.reason)} · ${hoursText(first.hours)} היום</div>
-          <div class="row" style="margin-top:14px"><button class="btn" data-plandone="${esc(first.id)}">✓ ${doneLabel(first)}</button>
-            <button class="btn ghost" data-snooze="${esc(first.id)}">⏭ לדחות למחר</button></div>`
-          : `<div class="hero-main">אין עוד משימות להיום 🎉</div><div class="hero-sub">אפשר להקדים משהו מ"בהמשך השבוע".</div>`}
+
+    el.innerHTML = `
+      <div class="focus-now">
+        <div class="focus-eyebrow">${first ? "עכשיו" : "סיימת להיום"}</div>
+        ${first ? `
+          <div class="focus-course">${esc(cname(first.courseId))}</div>
+          <h2 class="focus-title">${esc(first.title)}</h2>
+          <p class="focus-why">${esc(first.reason)}</p>
+          <div class="focus-actions">
+            <button class="btn" data-plandone="${esc(first.id)}">${doneLabel(first)}</button>
+            <button class="btn ghost" data-snooze="${esc(first.id)}">מחר</button>
+          </div>
+          <div class="focus-dur">${hoursText(first.hours)} <span>להיום</span></div>`
+          : `<h2 class="focus-title">הכול סגור 🎉</h2>
+             <p class="focus-why">אפשר להקדים משהו מ״בהמשך השבוע״.</p>`}
       </div>
-      <aside class="hero-side">
-        <div class="hero-stats">
-          ${stat(hoursText(plan.capacity), "פנויות היום")}
-          ${stat(plan.today.length, "משימות היום")}
-          ${stat(behind, "לא נראו", behind ? "warn" : "")}
-          ${stat(nextDl ? L.daysUntil(nextDl.date, now) : "—", nextDl ? "ימים ל" + (nextDl.kind === "exam" ? "מבחן" : "הגשה") + " ב" + cname(nextDl.courseId) : "אין הגשה")}
+      <div class="focus-rest">
+        <div class="focus-head"><span>היום</span><span class="muted">${hoursText(plan.capacity)} פנויות</span></div>
+        ${ribbon.length ? `<ol class="ribbon">${ribbon.map((r) => `
+          <li class="${r.live ? "live" : ""} ${r.task ? "is-task" : ""}" style="--c:${r.color}">
+            <span class="rb-time">${r.time || "·"}</span>
+            <span class="rb-body"><b>${esc(r.title)}</b>${r.note ? `<i>${esc(r.note)}</i>` : ""}</span>
+          </li>`).join("")}</ol>` : `<p class="empty small">אין עוד שיעורים או משימות היום.</p>`}
+        <div class="focus-nums">
+          <div><b class="${behind ? "hot" : ""}">${behind}</b><span>לא נראו</span></div>
+          <div><b>${nextDl ? L.daysUntil(nextDl.date, now) : "—"}</b><span>${nextDl ? "ימים ל" + cname(nextDl.courseId) : "אין הגשה"}</span></div>
+          ${plan.overload ? `<div><b class="hot">+${hoursText(plan.overload)}</b><span>מעבר לזמן</span></div>` : ""}
         </div>
-        <div class="hero-sess">${current ? sessLine(current, "🟢 עכשיו בשיעור:") : upcoming[0] ? sessLine(upcoming[0], "⏭️ השיעור הבא:") + (upcoming.length > 1 ? ` <span class="muted small">ועוד ${upcoming.length - 1} היום</span>` : "") : "אין עוד שיעורים היום"}</div>
-      </aside>
-    </div>`;
-    const fold = (title, items, open) => items.length ? `<details class="fold" ${open ? "open" : ""}><summary>${title} <span class="muted small">(${items.length})</span></summary>${items.map((i) => planRow(i, false)).join("")}</details>` : "";
-    return `${hero}
+      </div>`;
+  }
+
+  function viewToday() {
+    const { plan } = currentPlan();
+    // the first item lives in the focus panel; everything else is the day's list
+    const restToday = plan.today.slice(1);
+    const fold = (title, items, open) => items.length
+      ? `<details class="fold" ${open ? "open" : ""}><summary>${title} <span class="muted small">(${items.length})</span></summary>${items.map((i) => planRow(i, false)).join("")}</details>`
+      : "";
+    return `
       ${restToday.length ? `<div class="card" style="margin-bottom:16px">
         <div class="row"><h3>אחר כך היום</h3><span class="spacer"></span><span class="muted small">${hoursText(plan.planned)} מתוכננות · פנויות היום: ${hoursText(plan.capacity)}</span></div>
         ${restToday.map((i) => planRow(i, true)).join("")}
@@ -386,7 +421,7 @@
     const maxLoad = Math.max(60, ...weeks.map((w) => w.load));
     return `<div class="card span"><h3>🗓️ עומס לאורך הסמסטר <span class="muted small">כהה = שבוע עמוס יותר</span></h3>
       <div class="heat">${weeks.map((w) => `<div class="hw ${w.current ? "cur" : ""} ${w.teaching ? "" : "exam"}" style="--a:${(w.load / maxLoad).toFixed(2)}"
-        title="${L.fmt(w.start)}–${L.fmt(w.end)}${w.items.length ? ": " + w.items.map((d) => cname(d.courseId) + " " + d.title).join(" · ").replace(/"/g, "") : ""}"><span>${w.teaching ? w.n : "📝"}</span></div>`).join("")}</div></div>`;
+        title="${L.fmt(w.start)}–${L.fmt(w.end)}${w.items.length ? ": " + w.items.map((d) => cname(d.courseId) + " " + d.title).join(" · ").replace(/"/g, "") : ""}"><span>${w.teaching ? w.n : ""}</span></div>`).join("")}</div></div>`;
   }
 
   function viewSchedule() {
@@ -403,15 +438,19 @@
       const dayDls = dls.filter((d) => d.date === ds);
       const isToday = ds === todayIso;
       return `<div class="col ${isToday ? "today" : ""}" style="height:${height}px">
-        ${dayEvs.map((e) => `<div class="ev ${e.cancelled ? "cancelled" : ""}" style="--c:${e.course.color};top:${top(e.start)}px;height:${top(e.end) - top(e.start) - 2}px;width:calc(${100 / e.lanes}% - 4px);inset-inline-start:calc(${(100 / e.lanes) * e.lane}% + 2px)"
+        ${dayEvs.map((e) => `<div class="ev ${e.cancelled ? "cancelled" : ""} ${top(e.end) - top(e.start) < 70 ? "short" : ""}" style="--c:${e.course.color};top:${top(e.start)}px;height:${top(e.end) - top(e.start) - 2}px;width:calc(${100 / e.lanes}% - 4px);inset-inline-start:calc(${(100 / e.lanes) * e.lane}% + 2px)"
           title="${esc(e.course.name)} · ${esc(e.session.location || "")}">
           <b>${esc(e.course.short)}</b>${L.SESSION_LABEL[e.session.type]} ${e.start}–${e.end}<br>
           <span class="muted">${esc(e.cancelled ? "בוטל" : e.extra ? e.note : e.session.location || "")}</span></div>`).join("")}
-        ${dayDls.map((d, k) => `<div class="ev deadline" style="--c:var(--now);top:${top("19:30") + k * 22 - (dayDls.length - 1) * 22}px;height:22px">📌 ${esc(cname(d.courseId))}: ${esc(d.title)}</div>`).join("")}
         ${isToday && nowTop > 0 && nowTop < height ? `<div class="now-line" style="top:${nowTop}px"></div>` : ""}
       </div>`;
     }).join("");
     const hours = Array.from({ length: endH - startH }, (_, i) => `<div style="top:${i * pxH}px">${startH + i}:00</div>`).join("");
+    const allday = days.map((ds) => {
+      const list = dls.filter((d) => d.date === ds);
+      return `<div class="allday ${ds === todayIso ? "today" : ""}">${list.map((d) =>
+        `<span class="pin" style="--c:${ccolor(d.courseId)}" title="${esc(cname(d.courseId))}: ${esc(d.title)}">${d.kind === "exam" ? "מבחן" : "הגשה"} · ${esc(cname(d.courseId))}</span>`).join("")}</div>`;
+    }).join("");
     const upcoming = dls.filter((d) => { const x = L.daysUntil(d.date, now); return x >= 0 && x <= 45; });
     return `
       <div class="row" style="margin-bottom:12px">
@@ -424,6 +463,7 @@
       </div>
       <div class="week">
         <div class="head"></div>${days.map((ds) => `<div class="head ${ds === todayIso ? "today" : ""}">${L.fmtLong(ds).replace("יום ", "")}</div>`).join("")}
+        <div class="allday corner"></div>${allday}
         <div class="hours" style="height:${height}px">${hours}</div>${cols}
       </div>
       <div class="grid" style="margin-top:16px">
@@ -626,7 +666,7 @@
         <div class="row"><label class="btn ghost" style="cursor:pointer">טעינת my-semester.js<input type="file" accept=".js,.json" data-import="data" hidden></label>
         ${source === "import" ? `<button class="btn danger" data-action="clearData">חזרה לקובץ המקומי</button>` : ""}</div></div>
       <div class="card"><h3>🎨 תצוגה</h3>
-        <div class="row">סגנון: <select data-setting-str="look">${[["board", "לוח (ברירת מחדל)"], ["pop", "פופ"], ["garden", "גן"], ["berry", "פירות יער"]].map(([v, l]) => `<option value="${v}" ${(state.look || "board") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="row">סגנון: <select data-setting-str="look">${[["spectrum", "ספקטרום (ברירת מחדל)"], ["board", "לוח"], ["garden", "גן"], ["berry", "פירות יער"]].map(([v, l]) => `<option value="${v}" ${(state.look || "spectrum") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
         <div class="row" style="margin-top:8px">מצב כהה: <select data-setting-str="theme">${[["auto", "לפי המחשב"], ["light", "בהיר"], ["dark", "כהה"]].map(([v, l]) => `<option value="${v}" ${state.theme === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
         <label class="row" style="margin-top:8px"><input type="checkbox" data-setting-bool="reviews" ${state.reviews ? "checked" : ""}> חזרות מרווחות: יום, שבוע וחודש אחרי שראית הרצאה</label>
         <div class="muted small">קיצורי מקלדת: 1–4 מעבר בין לשוניות.</div></div>
@@ -639,17 +679,21 @@
   function render() {
     if (!VIEWS[state.tab]) state.tab = "today";
     applyTheme();
+    const unread = remote.inbox.filter((m) => !m.read).length;
     document.getElementById("tabs").innerHTML = Object.entries(VIEWS).filter(([, v]) => !v.hidden)
-      .map(([k, v]) => `<button data-tab="${k}" class="${k === state.tab || VIEWS[state.tab].parent === k ? "active" : ""}">${v.title}</button>`).join("") +
-      `<button class="theme-btn gear" data-tab="settings" title="הגדרות וגיבוי">⚙️</button>` +
-      (cloud.user ? `<button class="theme-btn bell" data-tab="today" title="עדכונים">🔔${remote.inbox.some((m) => !m.read) ? `<span class="dotn">${remote.inbox.filter((m) => !m.read).length}</span>` : ""}</button>` : "") +
-      `<button class="theme-btn nogap" data-action="theme" title="מצב כהה / בהיר">${document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"}</button>`;
+      .map(([k, v]) => `<button data-tab="${k}" class="${k === state.tab || VIEWS[state.tab].parent === k ? "active" : ""}" title="${v.title}">
+        <i>${ICONS[k] || ""}</i><span>${v.title}</span>${k === "today" && unread ? `<em class="dotn">${unread}</em>` : ""}</button>`).join("");
+    document.getElementById("railFoot").innerHTML =
+      `<button data-tab="settings" class="${state.tab === "settings" ? "active" : ""}" title="הגדרות"><i>${ICONS.settings}</i><span>הגדרות</span></button>
+       <button data-action="theme" title="מצב כהה / בהיר"><i>${document.documentElement.dataset.theme === "dark" ? "☀" : "☾"}</i><span>${document.documentElement.dataset.theme === "dark" ? "בהיר" : "כהה"}</span></button>`;
+    document.getElementById("pageTitle").textContent = VIEWS[state.tab].title;
     const sw = L.semesterWeek(data.semester, now);
     document.getElementById("subtitle").textContent =
       `${data.student && data.student.name ? data.student.name + " · " : ""}${data.semester.name}${sw.n ? ` · שבוע ${sw.n} מתוך ${sw.total}` : ""} · ${L.fmtLong(todayIso)}${qp ? " (תצוגת יום אחר)" : ""}`;
     const banner = document.getElementById("banner");
     banner.hidden = source !== "sample";
     banner.textContent = DEMO ? "מצב הדגמה · נתונים לדוגמה, שום דבר לא נשמר" : "מצב הדגמה: מוצגים נתונים לדוגמה. כדי לראות את שלך – ליצור data/my-semester.js (ראי README) או לטעון אותו בהגדרות.";
+    renderFocus();
     const v = VIEWS[state.tab];
     document.getElementById("view").innerHTML = (v.parent ? `<button class="link back" data-tab="${v.parent}">→ חזרה ל${VIEWS[v.parent].title}</button>` : "") + v.render();
   }

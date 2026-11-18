@@ -31,7 +31,7 @@ window.SAMPLE_DATA = {
       "short": "סטטיסטיקה",
       "code": "000-1-0001",
       "credits": 4,
-      "color": "#00c875",
+      "color": "#00b368",
       "components": [
         {
           "key": "hw",
@@ -109,7 +109,7 @@ window.SAMPLE_DATA = {
       "short": "חק״ב",
       "code": "000-1-0002",
       "credits": 3.5,
-      "color": "#a25ddc",
+      "color": "#00a9c7",
       "components": [
         {
           "key": "project",
@@ -150,7 +150,7 @@ window.SAMPLE_DATA = {
       "short": "אלגו",
       "code": "000-1-0004",
       "credits": 4,
-      "color": "#0073ea",
+      "color": "#3b5bff",
       "components": [
         {
           "key": "hw",
@@ -219,7 +219,7 @@ window.SAMPLE_DATA = {
       "short": "כלכלה",
       "code": "000-1-0005",
       "credits": 3,
-      "color": "#e2445c",
+      "color": "#ff2d6f",
       "components": [
         {
           "key": "part",
@@ -266,7 +266,7 @@ window.SAMPLE_DATA = {
       "short": "סדנה",
       "code": "000-1-0003",
       "credits": 0.5,
-      "color": "#00a9a5",
+      "color": "#ffc400",
       "components": [],
       "conditions": [],
       "staff": [],

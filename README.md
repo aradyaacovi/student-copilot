@@ -30,7 +30,7 @@ Built for Hebrew (RTL) first. No framework, no build step.
 
 All screenshots use the bundled demo data and a pinned clock (`?demo=1&today=…&now=…`), so they are reproducible: `node tools/shots.js`.
 
-The interface is laid out like a work-management board — a light workspace, white cards, solid status labels and rows that carry their course colour. Four themes ship with it (board by default) plus a dark mode, switchable in settings.
+**The layout is the argument.** Three zones, not a page of cards: a dark rail for navigation, a bright working area, and a focus panel — painted in the colour of whatever you should be doing right now — that stays on screen on every tab, carrying the one task, today's ribbon of classes and work, and the day's numbers. Every course owns a vivid hue and keeps it everywhere: chips, rows, calendar blocks, progress. Four themes ship with it plus a dark mode.
 
 ## Install it
 

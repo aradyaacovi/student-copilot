@@ -5,7 +5,7 @@
  * Everything else (Supabase, fonts): straight to the network, with a cached copy as fallback.
  * Supabase requests are never cached – stale academic data would be worse than none.
  */
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL = "shell-" + VERSION;
 const RUNTIME = "runtime-" + VERSION;
 
