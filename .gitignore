@@ -1,0 +1,9 @@
+# הנתונים האישיים – לא עולים לגיטהאב
+data/my-semester.js
+*.backup.json
+student-copilot-backup-*.json
+.DS_Store
+Thumbs.db
+# מפתחות וסודות
+js/config.js
+automations/.env

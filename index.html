@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Student Copilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">SC</span>
+      <div>
+        <h1>Student Copilot</h1>
+        <div class="sub" id="subtitle"></div>
+      </div>
+    </div>
+    <nav id="tabs"></nav>
+  </header>
+  <div id="banner" hidden></div>
+  <main id="view"></main>
+  <footer class="foot">הנתונים נשמרים רק בדפדפן הזה. גיבוי: לשונית "גיבוי והגדרות".</footer>
+
+  <!-- סדר הטעינה: נתוני הדגמה → הנתונים שלך (אם קיים) → הגדרות ענן (אם קיים) → Supabase → לוגיקה → אפליקציה -->
+  <script src="data/sample-semester.js"></script>
+  <script src="data/my-semester.js"></script>
+  <script src="js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/logic.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
