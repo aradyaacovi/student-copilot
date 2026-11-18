@@ -102,9 +102,11 @@ The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARC
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
 | Moodle sync | every 3 hours | Reads the Moodle iCal feed, matches each event to a course by its course number, upserts deadlines and alerts on new ones |
-| Email changes | new email (IMAP) | Extracts cancellations, make-ups, moves and new deadlines; applies confident ones, queues uncertain ones for approval |
+| Email changes *(off)* | new email (IMAP) | Extracts cancellations, make-ups, moves and new deadlines; applies confident ones, queues uncertain ones for approval |
 | Morning brief | daily 07:23, weekly on Sunday | Today's classes, top priorities, pace per course, what changed |
 | Reminders | daily 18:00 | Due tomorrow, large submission in 3 days, time to start exam prep, unwatched lecture before tomorrow's tutorial |
+
+The email workflow ships disabled: Gmail over IMAP needs an app password, which Google only offers on accounts with 2-Step Verification turned on. Everything else runs.
 
 Safety rules for the email workflow: email content is treated as data, never as instructions; a change for a different tutorial group is ignored; an ambiguous course, an unknown group or a date that does not fall on a real class goes to manual review; the workflow never sends email.
 
