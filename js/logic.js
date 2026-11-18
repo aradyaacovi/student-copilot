@@ -379,18 +379,46 @@
     };
   }
 
-  /** Free study hours left today: until dayEnd, minus remaining in-person sessions, capped. */
-  function freeHoursToday(sessions, now, dayEnd, cap) {
+  /**
+   * Total minutes covered by `intervals` inside [from, to], counting overlaps once.
+   * Each interval is [startMinute, endMinute]. Two classes that overlap, or a class
+   * that sits inside a calendar event, must not subtract the same minute twice.
+   */
+  function busyMinutes(intervals, from, to) {
+    const clipped = intervals
+      .map(([a, b]) => [Math.max(a, from), Math.min(b, to)])
+      .filter(([a, b]) => b > a)
+      .sort((x, y) => x[0] - y[0]);
+    let total = 0, start = null, end = null;
+    for (const [a, b] of clipped) {
+      if (end === null) { start = a; end = b; }
+      else if (a > end) { total += end - start; start = a; end = b; }
+      else if (b > end) { end = b; }
+    }
+    if (end !== null) total += end - start;
+    return total;
+  }
+
+  /**
+   * Free study hours left today: until dayEnd, minus remaining in-person sessions
+   * and anything else already committed, capped.
+   *
+   * `busy` is an optional list of `{ start, end }` in "HH:MM" — external commitments
+   * for today, such as a shift or an appointment read from the student's calendar.
+   * Without it the result is the same as before: only classes are subtracted.
+   */
+  function freeHoursToday(sessions, now, dayEnd, cap, busy) {
     const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
     const nowMin = Math.max(now.getHours() * 60 + now.getMinutes(), 8 * 60);
     const end = toMin(dayEnd || "19:30");
-    let free = Math.max(0, end - nowMin);
+    const taken = [];
     for (const s of sessions) {
       if (s.session && (s.session.recorded || s.session.online)) continue; // watched whenever
-      const a = Math.max(toMin(s.start), nowMin), b = Math.min(toMin(s.end), end);
-      if (b > a) free -= b - a;
+      taken.push([toMin(s.start), toMin(s.end)]);
     }
-    return Math.max(0, Math.min(cap, Math.round((free / 60) * 2) / 2));
+    for (const b of busy || []) taken.push([toMin(b.start), toMin(b.end)]);
+    const free = Math.max(0, end - nowMin) - busyMinutes(taken, nowMin, end);
+    return Math.max(0, Math.min(cap, Math.round((Math.max(0, free) / 60) * 2) / 2));
   }
 
   /**
@@ -580,7 +608,7 @@
     courseGrade, neededExam, averages, prioritize, examPrepDays, buildIcs,
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
     deadlineId, nextSessionAfter, applyRemote,
-    estimateEffort, buildPlan, freeHoursToday, catchupItems,
+    estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;
