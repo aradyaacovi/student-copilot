@@ -163,7 +163,7 @@ Vanilla JavaScript, HTML and CSS · Supabase (Postgres, Auth, RLS) · n8n · Cla
 ## Roadmap
 
 - Multi-student onboarding: Google sign-in, a shared course catalog keyed by course number, syllabus upload with automatic extraction of grade components.
-- Calendar write-back: schedule catch-up blocks into free slots.
+- Calendar write-back: schedule catch-up blocks into free slots. Design and the Google scope constraints: [docs/CALENDAR_WRITE_BACK.md](docs/CALENDAR_WRITE_BACK.md).
 - Per-exam topic checklists built from the cumulative summaries.
 
 ## How it was built
