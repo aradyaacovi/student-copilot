@@ -116,4 +116,32 @@ test("freeHoursToday: מוריד שיעור בקמפוס, לא מוקלט", () =
   const s = [{ start: "14:00", end: "17:00", session: {} }, { start: "17:00", end: "19:00", session: { recorded: true } }];
   assert.equal(L.freeHoursToday(s, now, "19:30", 6), 3); // 6 שעות עד 19:30 פחות 3
 });
+test("freeHoursToday: מוריד גם התחייבות מהיומן, לא רק שיעורים", () => {
+  const now = new Date(2026, 10, 16, 13, 30);
+  const s = [{ start: "14:00", end: "16:00", session: {} }];
+  const busy = [{ start: "17:00", end: "19:30" }]; // משמרת בעבודה
+  assert.equal(L.freeHoursToday(s, now, "19:30", 6), 4);
+  assert.equal(L.freeHoursToday(s, now, "19:30", 6, busy), 1.5);
+});
+test("freeHoursToday: חפיפה בין שיעור להתחייבות נספרת פעם אחת", () => {
+  const now = new Date(2026, 10, 16, 13, 30);
+  const s = [{ start: "14:00", end: "17:00", session: {} }];
+  const busy = [{ start: "16:00", end: "18:00" }]; // שעה אחת חופפת לשיעור
+  assert.equal(L.freeHoursToday(s, now, "19:30", 6), 3);
+  // התפוס הוא 14:00–18:00, כלומר 4 שעות מתוך 6. ספירה כפולה הייתה נותנת שעה אחת.
+  assert.equal(L.freeHoursToday(s, now, "19:30", 6, busy), 2);
+});
+test("freeHoursToday: התחייבות שנגמרה או שאחרי סוף היום לא משנה כלום", () => {
+  const now = new Date(2026, 10, 16, 13, 30);
+  const busy = [{ start: "08:00", end: "12:00" }, { start: "20:00", end: "22:00" }];
+  assert.equal(L.freeHoursToday([], now, "19:30", 6), 6);
+  assert.equal(L.freeHoursToday([], now, "19:30", 6, busy), 6);
+});
+test("busyMinutes: מאחד קטעים חופפים וסמוכים וגוזר לחלון", () => {
+  assert.equal(L.busyMinutes([[60, 120], [90, 150]], 0, 600), 90);
+  assert.equal(L.busyMinutes([[60, 120], [120, 180]], 0, 600), 120);
+  assert.equal(L.busyMinutes([[60, 120], [300, 360]], 0, 600), 120);
+  assert.equal(L.busyMinutes([[0, 600]], 100, 200), 100);
+  assert.equal(L.busyMinutes([], 0, 600), 0);
+});
 console.log(`${passed} בדיקות עברו בסך הכול`);
