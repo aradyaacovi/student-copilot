@@ -583,9 +583,25 @@
       </div>`;
   }
 
+  function appCard() {
+    const p = window.PWA || { state: "unsupported" };
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    let body;
+    if (p.state === "update") body = `<p class="small">יש גרסה חדשה של האפליקציה.</p><button class="btn" data-action="pwaUpdate">עדכון עכשיו</button>`;
+    else if (p.standalone || p.state === "installed") body = `<p class="small">האפליקציה מותקנת ✓ היא עובדת גם בלי אינטרנט. הנתונים שלך מסונכרנים דרך הענן, כשיש חיבור.</p>`;
+    else if (p.state === "installable") body = `<p class="small muted">להתקין כאפליקציה: אייקון במסך הבית, בלי שורת כתובת, ועובד גם בלי אינטרנט.</p>
+        <button class="btn" data-action="pwaInstall">📲 התקנת האפליקציה</button>`;
+    else if (ios) body = `<p class="small muted">באייפון: לפתוח ב-Safari ← כפתור <b>שיתוף</b> ← <b>הוספה למסך הבית</b>.</p>`;
+    else if (p.state === "ready") body = `<p class="small">מוכנה לעבודה בלי אינטרנט ✓</p>
+        <p class="small muted">להתקנה כאפליקציה: בכרום או אדג׳ – תפריט ⋮ ← <b>התקנת האפליקציה</b>, או סמל ההתקנה בשורת הכתובת. בדפדפן הזה אין התקנה.</p>`;
+    else body = `<p class="small muted">כדי להתקין ולעבוד בלי אינטרנט צריך לפתוח את האפליקציה ב-localhost או בכתובת מאובטחת (https), לא כקובץ מהמחשב.</p>`;
+    return `<div class="card"><h3>📱 האפליקציה</h3>${body}</div>`;
+  }
+
   function viewSettings() {
     const srcText = { sample: "נתוני הדגמה (data/sample-semester.js)", mine: "הקובץ שלך (data/my-semester.js)", import: "נתונים שייבאת לדפדפן הזה", cloud: "הענן (Supabase)" }[source];
     return `<div class="grid">
+      ${appCard()}
       ${cloudCard()}
       <div class="card"><h3>💾 גיבוי ההתקדמות שלך</h3>
         <p class="small muted">מה שסימנת (ראיתי / בוצע), ציונים, משימות וסיכומים שהוספת נשמרים רק בדפדפן. כדאי לגבות מדי פעם.</p>
@@ -659,6 +675,8 @@
     if (a === "export") download(`student-copilot-backup-${todayIso}.json`, JSON.stringify({ ...state, dataOverride: undefined }, null, 2), "application/json");
     if (a === "clearData") { state.dataOverride = null; save(); location.reload(); }
     if (a === "print") window.print();
+    if (a === "pwaInstall") return window.PWA.install().then((ok) => { if (ok) toast("מותקן ✓"); render(); });
+    if (a === "pwaUpdate") { toast("מעדכן…"); return window.PWA.update(); }
     if (a === "why") { const w = document.getElementById("why"); w.hidden = !w.hidden; }
     if (a === "theme") { state.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; save(); render(); }
     if (a === "md") {
@@ -742,6 +760,8 @@
     if (i >= 0 && i < keys.length) { state.tab = keys[i]; save(); render(); }
   });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+
+  document.addEventListener("pwa-change", () => { if (state.tab === "settings") render(); });
 
   render();
   cloudInit().catch((err) => { cloud.status = "error"; cloud.error = err.message; render(); });

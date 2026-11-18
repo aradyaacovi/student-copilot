@@ -32,6 +32,10 @@ All screenshots use the bundled demo data and a pinned clock (`?demo=1&today=…
 
 The interface ships four themes (blue "pop" by default) and a dark mode, switchable in settings.
 
+## Install it
+
+The app is a PWA. On Chrome or Edge, open it and choose **Install** from the address bar or the ⋮ menu; on iOS, Safari → Share → Add to Home Screen. Once installed it opens without browser chrome and keeps working offline — the service worker caches the shell and the semester data, while Supabase requests always go to the network so a stale deadline is never shown.
+
 ## The problem
 
 A semester's obligations are scattered: syllabi, Moodle, the calendar, lecturer emails, and a mental list of lectures not yet watched. Most student dashboards answer "what do I have to do?" with a long list. The first version of this project did the same, with eight tabs, and it was overwhelming to use. The redesign started from a different question: given limited hours today, what is the one thing to do now, and why?
@@ -44,6 +48,7 @@ A semester's obligations are scattered: syllabi, Moodle, the calendar, lecturer 
 - **Grades.** Weighted course grades with pass rules, credit-weighted semester and cumulative averages, and the exam grade needed to hit a target.
 - **Course pages.** Requirements, deadlines, progress, grade and a cumulative summary per course.
 - **Automations.** Moodle sync, email-driven schedule changes, a morning brief and deadline reminders.
+- **Installable.** A progressive web app: installs to the home screen, runs full-screen, and works offline from a cached app shell.
 
 ## How prioritization works
 
@@ -144,6 +149,10 @@ supabase/schema.sql     tables and RLS policies
 tests/                  logic and automation tests
 tools/serve.js          dependency-free static server
 tools/shots.js          reproducible documentation screenshots (DevTools protocol)
+tools/icons.js          generates the app icons from one SVG
+sw.js                   service worker: offline app shell
+manifest.webmanifest    PWA manifest
+icons/                  generated app icons
 docs/                   architecture, user guide, screenshots
 ```
 
