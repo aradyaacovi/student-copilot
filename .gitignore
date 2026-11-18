@@ -7,3 +7,6 @@ Thumbs.db
 # מפתחות וסודות
 js/config.js
 automations/.env
+
+# הגדרות מקומיות של הסביבה
+.claude/
