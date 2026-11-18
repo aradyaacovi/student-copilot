@@ -1,0 +1,27 @@
+{
+  "name": "student-copilot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A semester command center that answers one question: what should I work on right now? Vanilla JS app, Supabase backend and n8n automations.",
+  "author": "Arad Yaacovi",
+  "license": "MIT",
+  "homepage": "https://aradyaacovi.github.io/student-copilot/?demo=1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aradyaacovi/student-copilot.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node tools/serve.js",
+    "test": "node tests/logic.test.js && node tests/automations.test.js",
+    "test:logic": "node tests/logic.test.js",
+    "test:automations": "node tests/automations.test.js",
+    "build:automations": "node automations/build.js",
+    "automation": "node automations/run-local.js",
+    "shots": "node tools/shots.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

@@ -1,0 +1,44 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # index.html also loads two files that are git-ignored on purpose: the
+      # student's own semester data and the Supabase config. Empty stubs keep the
+      # public demo's console clean without shipping anything private.
+      - name: Stub the optional local files
+        run: |
+          : > js/config.js
+          : > data/my-semester.js
+
+      # The public site has no data of its own, so send a bare visit to the demo.
+      - name: Default the published site to the demo
+        run: |
+          sed -i 's#</head>#  <script>if(!location.search)location.replace(location.pathname+"?demo=1");</script>\n</head>#' index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

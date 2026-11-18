@@ -1,6 +1,13 @@
 # Student Copilot
 
+[![tests](https://github.com/aradyaacovi/student-copilot/actions/workflows/test.yml/badge.svg)](https://github.com/aradyaacovi/student-copilot/actions/workflows/test.yml)
+[![live demo](https://img.shields.io/badge/live-demo-2f54eb)](https://aradyaacovi.github.io/student-copilot/?demo=1)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![dependencies](https://img.shields.io/badge/dependencies-none-success)
+
 **A semester command center that answers one question: _what should I work on right now?_**
+
+Live demo: **[aradyaacovi.github.io/student-copilot](https://aradyaacovi.github.io/student-copilot/?demo=1)** — the real app on bundled demo data, nothing saved.
 
 Student Copilot pulls a student's whole semester into one place: course requirements, deadlines, the weekly schedule, lecture progress, grades and cumulative summaries. It turns all of that into a single prioritized daily plan. Background automations keep it current by syncing Moodle and reading schedule-change emails.
 
@@ -106,10 +113,7 @@ Safety rules for the email workflow: email content is treated as data, never as 
 ## Tests
 
 ```bash
-node tests/logic.test.js
-```
-```bash
-node tests/automations.test.js
+npm test
 ```
 
 34 tests, zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
@@ -117,7 +121,7 @@ node tests/automations.test.js
 ## Run it
 
 ```bash
-node tools/serve.js
+npm start
 ```
 
 
