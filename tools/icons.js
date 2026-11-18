@@ -9,9 +9,9 @@ const path = require("path");
 const os = require("os");
 
 const OUT = path.join(__dirname, "..", "icons");
-const BLUE = "#2f54eb";
-const YELLOW = "#ffd23f";
-const CORAL = "#ff5a47";
+const BLUE = "#0073ea";
+const YELLOW = "#fdab3d";
+const CORAL = "#00c875";
 const INK = "#141a3c";
 
 /** The mark: a cobalt square, a yellow quarter-circle and a coral dot – the hero shapes, in miniature. */

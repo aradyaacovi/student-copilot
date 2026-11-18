@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#2f54eb"/>
+  <rect width="512" height="512" rx="112" fill="#0073ea"/>
   <!-- circles centred on the corners: the viewBox clips each to a clean quarter -->
-  <circle cx="0" cy="512" r="226" fill="#ffd23f"/>
-  <circle cx="404" cy="124" r="78" fill="#ff5a47"/>
+  <circle cx="0" cy="512" r="226" fill="#fdab3d"/>
+  <circle cx="404" cy="124" r="78" fill="#00c875"/>
   <g fill="#fff" font-family="Rubik, Arial, sans-serif" font-weight="700" text-anchor="middle">
     <text x="256" y="330" font-size="188" letter-spacing="-6">SC</text>
   </g>

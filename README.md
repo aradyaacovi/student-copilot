@@ -30,7 +30,7 @@ Built for Hebrew (RTL) first. No framework, no build step.
 
 All screenshots use the bundled demo data and a pinned clock (`?demo=1&today=…&now=…`), so they are reproducible: `node tools/shots.js`.
 
-The interface ships four themes (blue "pop" by default) and a dark mode, switchable in settings.
+The interface is laid out like a work-management board — a light workspace, white cards, solid status labels and rows that carry their course colour. Four themes ship with it (board by default) plus a dark mode, switchable in settings.
 
 ## Install it
 

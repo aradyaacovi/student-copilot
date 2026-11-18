@@ -19,13 +19,13 @@ const DATE = "2026-11-17";
 const OUT = path.join(__dirname, "..", "docs", "screenshots");
 
 const SHOTS = [
-  { name: "today", query: "tab=today" },
-  { name: "schedule", query: "tab=schedule", height: 1150 },
-  { name: "courses", query: "tab=courses", height: 900 },
-  { name: "course", query: "tab=course&course=algo", height: 1000 },
-  { name: "grades", query: "tab=grades", height: 1000 },
-  { name: "today-dark", query: "tab=today&theme=dark" },
-  { name: "mobile", query: "tab=today", width: 390, height: 844, mobile: true },
+  { name: "today", query: "theme=light&tab=today" },
+  { name: "schedule", query: "theme=light&tab=schedule", height: 1150 },
+  { name: "courses", query: "theme=light&tab=courses", height: 900 },
+  { name: "course", query: "theme=light&tab=course&course=algo", height: 1000 },
+  { name: "grades", query: "theme=light&tab=grades", height: 1000 },
+  { name: "today-dark", query: "theme=dark&tab=today" },
+  { name: "mobile", query: "theme=light&tab=today", width: 390, height: 844, mobile: true },
 ];
 
 const CANDIDATES = [
@@ -105,7 +105,7 @@ async function main() {
       width, height, deviceScaleFactor: 2, mobile: !!s.mobile,
       screenWidth: width, screenHeight: height,
     });
-    const url = `${BASE}/?demo=1&today=${DATE}&now=09:40&theme=light&${s.query}`;
+    const url = `${BASE}/?demo=1&today=${DATE}&now=09:40&${s.query}`;
     await cdp.send("Page.navigate", { url });
     await wait(1800); // fonts and layout
     const { data } = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });

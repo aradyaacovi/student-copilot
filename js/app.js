@@ -64,7 +64,7 @@
   const applyTheme = () => {
     const dark = state.theme === "dark" || (state.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    const look = state.look || "pop"; if (look !== "soft") document.documentElement.dataset.look = look; else delete document.documentElement.dataset.look;
+    const look = state.look || "board"; if (look !== "board") document.documentElement.dataset.look = look; else delete document.documentElement.dataset.look;
   };
   const r1 = (n) => (n === null || n === undefined ? "—" : (Math.round(n * 10) / 10).toString());
   const daysText = (d) => (d === 0 ? "היום" : d === 1 ? "מחר" : d < 0 ? `לפני ${-d} ימים` : `בעוד ${d} ימים`);
@@ -275,14 +275,27 @@
     const sessLine = (s, pre) => `${pre} <b>${esc(s.course.short)} · ${L.SESSION_LABEL[s.session.type]}</b> ${s.start}–${s.end} <span class="muted">${esc(s.extra ? s.note : s.session.location || "")}</span>`;
     const first = plan.today[0];
     const restToday = plan.today.slice(1);
+    const behind = courses.reduce((s, c) => s + L.paceStatus(c, data.semester, now, state.seen).behind, 0);
+    const nextDl = deadlineItems().find((d) => !d.moedB && !state.done[d.id] && L.daysUntil(d.date, now) >= 0);
+    const stat = (v, l, cls) => `<div class="hero-stat"><b class="${cls || ""}">${v}</b><span>${l}</span></div>`;
     const hero = `<div class="hero">
-      <div class="hero-label">${first ? "עכשיו" : "סיימת להיום"}</div>
-      ${first ? `<div class="hero-main">${chip(first.courseId)} ${esc(first.title)}</div>
-        <div class="hero-sub">${esc(first.reason)} · ${hoursText(first.hours)} היום</div>
-        <div class="row" style="margin-top:12px"><button class="btn" data-plandone="${esc(first.id)}">✓ ${doneLabel(first)}</button>
-          <button class="btn ghost" data-snooze="${esc(first.id)}">⏭ לדחות למחר</button></div>`
-        : `<div class="hero-main">אין עוד משימות להיום 🎉</div><div class="hero-sub">אפשר להקדים משהו מ"בהמשך השבוע".</div>`}
-      <div class="hero-sess">${current ? sessLine(current, "🟢 עכשיו בשיעור:") : upcoming[0] ? sessLine(upcoming[0], "⏭️ השיעור הבא:") + (upcoming.length > 1 ? ` <span class="muted small">ועוד ${upcoming.length - 1} היום</span>` : "") : "אין עוד שיעורים היום"}</div>
+      <div class="hero-body">
+        <div class="hero-label">${first ? "עכשיו" : "סיימת להיום"}</div>
+        ${first ? `<div class="hero-main">${chip(first.courseId)} ${esc(first.title)}</div>
+          <div class="hero-sub">${esc(first.reason)} · ${hoursText(first.hours)} היום</div>
+          <div class="row" style="margin-top:14px"><button class="btn" data-plandone="${esc(first.id)}">✓ ${doneLabel(first)}</button>
+            <button class="btn ghost" data-snooze="${esc(first.id)}">⏭ לדחות למחר</button></div>`
+          : `<div class="hero-main">אין עוד משימות להיום 🎉</div><div class="hero-sub">אפשר להקדים משהו מ"בהמשך השבוע".</div>`}
+      </div>
+      <aside class="hero-side">
+        <div class="hero-stats">
+          ${stat(hoursText(plan.capacity), "פנויות היום")}
+          ${stat(plan.today.length, "משימות היום")}
+          ${stat(behind, "לא נראו", behind ? "warn" : "")}
+          ${stat(nextDl ? L.daysUntil(nextDl.date, now) : "—", nextDl ? "ימים ל" + (nextDl.kind === "exam" ? "מבחן" : "הגשה") + " ב" + cname(nextDl.courseId) : "אין הגשה")}
+        </div>
+        <div class="hero-sess">${current ? sessLine(current, "🟢 עכשיו בשיעור:") : upcoming[0] ? sessLine(upcoming[0], "⏭️ השיעור הבא:") + (upcoming.length > 1 ? ` <span class="muted small">ועוד ${upcoming.length - 1} היום</span>` : "") : "אין עוד שיעורים היום"}</div>
+      </aside>
     </div>`;
     const fold = (title, items, open) => items.length ? `<details class="fold" ${open ? "open" : ""}><summary>${title} <span class="muted small">(${items.length})</span></summary>${items.map((i) => planRow(i, false)).join("")}</details>` : "";
     return `${hero}
@@ -613,7 +626,7 @@
         <div class="row"><label class="btn ghost" style="cursor:pointer">טעינת my-semester.js<input type="file" accept=".js,.json" data-import="data" hidden></label>
         ${source === "import" ? `<button class="btn danger" data-action="clearData">חזרה לקובץ המקומי</button>` : ""}</div></div>
       <div class="card"><h3>🎨 תצוגה</h3>
-        <div class="row">סגנון: <select data-setting-str="look">${[["pop", "פופ כחול (ברירת מחדל)"], ["garden", "גן"], ["berry", "פירות יער"], ["soft", "רך"]].map(([v, l]) => `<option value="${v}" ${(state.look || "pop") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="row">סגנון: <select data-setting-str="look">${[["board", "לוח (ברירת מחדל)"], ["pop", "פופ"], ["garden", "גן"], ["berry", "פירות יער"]].map(([v, l]) => `<option value="${v}" ${(state.look || "board") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
         <div class="row" style="margin-top:8px">מצב כהה: <select data-setting-str="theme">${[["auto", "לפי המחשב"], ["light", "בהיר"], ["dark", "כהה"]].map(([v, l]) => `<option value="${v}" ${state.theme === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
         <label class="row" style="margin-top:8px"><input type="checkbox" data-setting-bool="reviews" ${state.reviews ? "checked" : ""}> חזרות מרווחות: יום, שבוע וחודש אחרי שראית הרצאה</label>
         <div class="muted small">קיצורי מקלדת: 1–4 מעבר בין לשוניות.</div></div>
