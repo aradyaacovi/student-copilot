@@ -39,7 +39,19 @@
 ```powershell
 powershell -ExecutionPolicy Bypass -File automations\start-n8n.ps1
 ```
-בפעם הראשונה זה מוריד את n8n (כמה דקות). אחר כך לפתוח http://localhost:5678 וליצור משתמש מקומי.
+**התקנה חד-פעמית של n8n** (לפני ההפעלה הראשונה):
+
+```bash
+npm install -g n8n --ignore-scripts
+```
+```bash
+cd "$env:APPDATA
+pm
+ode_modules
+8n"; npm rebuild sqlite3
+```
+
+ה-`--ignore-scripts` מדלג על בניית חבילת Kafka, שדורשת Visual Studio ושה-workflows האלה לא נוגעים בה. הפקודה השנייה מורידה את הבינארי של sqlite3, שבלעדיו n8n לא פותח את מסד הנתונים שלו. אחר כך לפתוח http://localhost:5678 וליצור משתמש מקומי.
 
 ### 5. לייבא את ה-workflows
 ב-n8n: Workflows ← ⋮ ← Import from File ← לבחור כל אחד מהקבצים ב-`automations/workflows/`.

@@ -16,4 +16,7 @@ $env:TZ = "Asia/Jerusalem"
 # lets the workflows read the variables above
 $env:N8N_BLOCK_ENV_ACCESS_IN_NODE = "false"
 Write-Host "Starting n8n... UI: http://localhost:5678  (stop with Ctrl+C)" -ForegroundColor Cyan
-npx --yes n8n
+# Installed globally with:  npm install -g n8n --ignore-scripts
+# (--ignore-scripts skips the Kafka client's native build, which needs Visual Studio
+#  and which these workflows never touch. npx would try to build it again.)
+n8n.cmd
