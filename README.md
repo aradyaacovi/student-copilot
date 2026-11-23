@@ -13,6 +13,14 @@ Student Copilot pulls a student's whole semester into one place: course requirem
 
 Built for Hebrew (RTL) first. No framework, no build step.
 
+| | |
+|---|---|
+| **Problem** | A semester's obligations are scattered across syllabi, Moodle, email and the calendar, and long task lists do not say what to do next. |
+| **Approach** | One prioritization function ranks every task by effort and slack, so the app shows one "now" task and a plan sized to today's free hours. |
+| **Stack** | Vanilla JavaScript, Supabase (Postgres, row-level security), n8n, Claude API for email interpretation, GitHub Actions |
+| **My part** | Designed and directed the product and its rules, used it daily across a seven-course semester; Claude Code implemented. See [How it was built](#how-it-was-built). |
+| **Proof** | 34 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
+
 ![Today view](docs/screenshots/today.png)
 
 | Schedule and semester load | Course page | Mobile |
