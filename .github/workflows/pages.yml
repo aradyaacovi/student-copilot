@@ -37,7 +37,7 @@ jobs:
           sed -i 's#</head>#  <script>if(!location.search)location.replace(location.pathname+"?demo=1");</script>\n</head>#' index.html
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .
       - id: deployment
