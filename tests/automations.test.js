@@ -132,6 +132,35 @@ test("קבצי ה-workflow תקינים: כל חיבור מצביע על node ק
   }
 });
 
+const Env = require("../automations/env.js");
+
+test("הגדרות: קובץ .env נקרא, ומשתני סביבה גוברים עליו", () => {
+  const env = Env.loadEnv("SUPABASE_URL=a\nUSER_ID=u1\n# הערה\n", { USER_ID: "u2", OTHER: "x" });
+  assert.equal(env.SUPABASE_URL, "a");
+  assert.equal(env.USER_ID, "u2");
+  assert.equal(env.OTHER, undefined);
+});
+
+test("הגדרות: בענן אין קובץ, ומשתנה ריק לא דורס ערך קיים", () => {
+  const cloud = Env.loadEnv("", { SUPABASE_URL: "https://x", SUPABASE_SERVICE_KEY: "k", USER_ID: "u" });
+  assert.deepEqual(Env.missingKeys(cloud, "3-briefs"), []);
+  const kept = Env.loadEnv("USER_ID=file", { USER_ID: "  " });
+  assert.equal(kept.USER_ID, "file");
+});
+
+test("הגדרות: ההודעה על חסר מציגה שמות בלבד, ומודל דורש את כתובת היומן", () => {
+  const env = Env.loadEnv("", { SUPABASE_URL: "https://x", SUPABASE_SERVICE_KEY: "secret-value", USER_ID: "u" });
+  assert.deepEqual(Env.missingKeys(env, "1-moodle-sync"), ["MOODLE_ICS_URL"]);
+  assert.ok(!JSON.stringify(Env.missingKeys(env, "1-moodle-sync")).includes("secret-value"));
+});
+
+test("workflow מתוזמן: קיים, משתמש בסודות לפי שם ובהרשאת קריאה בלבד", () => {
+  const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
+  for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "MOODLE_ICS_URL"]) assert.ok(y.includes("secrets." + k), k);
+  assert.ok(/permissions:\s*\n\s*contents: read/.test(y));
+  assert.ok(!/ANTHROPIC/.test(y), "מפתח המודל לא נדרש בענן עד שמפעילים את המייל");
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); passed++; console.log("✓", name); }

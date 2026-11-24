@@ -3,11 +3,10 @@
 //   node automations/run-local.js 3-briefs   מריץ workflow (1-moodle-sync / 3-briefs / 4-reminders)
 const fs = require("fs");
 const path = require("path");
-const env = {};
-for (const l of fs.readFileSync(path.join(__dirname, ".env"), "utf8").split(/\r?\n/)) {
-  const m = /^([A-Z_]+)=(.*)$/.exec(l);
-  if (m) env[m[1]] = m[2].trim();
-}
+const { loadEnv, missingKeys } = require("./env.js");
+const envPath = path.join(__dirname, ".env");
+// בענן (GitHub Actions) אין קובץ .env: ההגדרות מגיעות ממשתני סביבה.
+const env = loadEnv(fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "", process.env);
 const http = async (o) => {
   const res = await fetch(o.url, { method: o.method, headers: o.headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
   const text = await res.text();
@@ -18,6 +17,8 @@ const http = async (o) => {
 
 (async () => {
   const what = process.argv[2];
+  const missing = missingKeys(env, what);
+  if (missing.length) throw new Error("חסרות הגדרות: " + missing.join(", ") + " (בקובץ automations/.env או כסוד ב-GitHub)");
   if (what === "upload") {
     global.window = {};
     require("../data/my-semester.js");
