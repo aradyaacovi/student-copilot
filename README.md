@@ -19,7 +19,7 @@ Built for Hebrew (RTL) first. No framework, no build step.
 | **Approach** | One prioritization function ranks every task by effort and slack, so the app shows one "now" task and a plan sized to today's free hours. |
 | **Stack** | Vanilla JavaScript, Supabase (Postgres, row-level security), n8n, Claude API for email interpretation, GitHub Actions |
 | **My part** | Designed and directed the product and its rules, used it daily across a seven-course semester; Claude Code implemented. See [How it was built](#how-it-was-built). |
-| **Proof** | 34 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
+| **Proof** | 38 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
 
 ![Today view](docs/screenshots/today.png)
 
@@ -131,7 +131,7 @@ Safety rules for the email workflow: email content is treated as data, never as 
 npm test
 ```
 
-34 tests, zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
+38 tests, zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
 
 ## Run it
 
@@ -173,7 +173,7 @@ Vanilla JavaScript, HTML and CSS · Supabase (Postgres, Auth, RLS) · n8n · Cla
 ## Roadmap
 
 - Multi-student onboarding: Google sign-in, a shared course catalog keyed by course number, syllabus upload with automatic extraction of grade components.
-- Calendar write-back: schedule catch-up blocks into free slots. Design and the Google scope constraints: [docs/CALENDAR_WRITE_BACK.md](docs/CALENDAR_WRITE_BACK.md).
+- Calendar: read busy time into the daily plan first, then write catch-up blocks into free slots. Design and the Google scope constraints: [docs/CALENDAR_WRITE_BACK.md](docs/CALENDAR_WRITE_BACK.md).
 - Per-exam topic checklists built from the cumulative summaries.
 
 ## How it was built
