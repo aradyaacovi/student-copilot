@@ -1,0 +1,72 @@
+name: automations
+
+# GitHub מתזמן רק לפי UTC, ושעון ישראל זז פעמיים בשנה. לכן הריצה היא כל שעה,
+# ושלב ההחלטה בודק מה השעה בישראל ומה צריך לרוץ:
+#   סנכרון מודל  07,10,13,16,19,22   תדריך בוקר  07:23   תזכורות  18:23
+# ריצה שמתעכבת (קורה ב-GitHub) מושלמת בשעה או שעתיים אחרי. זה בטוח כי כל הודעה
+# נשמרת עם מפתח ייחודי, ולכן ריצה כפולה לא יוצרת הודעה כפולה.
+on:
+  schedule:
+    - cron: "23 3-20 * * *"
+  workflow_dispatch:
+    inputs:
+      which:
+        description: "מה להריץ עכשיו"
+        type: choice
+        options: [1-moodle-sync, 3-briefs, 4-reminders]
+        default: 3-briefs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automations
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - id: pick
+        env:
+          WHICH: ${{ inputs.which }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          H=$(TZ=Asia/Jerusalem date +%-H)
+          list=""
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            list="$WHICH"
+          else
+            case "$H" in 7|10|13|16|19|22) list="1-moodle-sync" ;; esac
+            case "$H" in 7|8|9) list="$list 3-briefs" ;; esac
+            case "$H" in 18|19|20) list="$list 4-reminders" ;; esac
+          fi
+          list=$(echo $list)
+          echo "שעה בישראל: $H, להריץ: ${list:-כלום}"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: decide
+    if: needs.decide.outputs.list != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 20 }
+      - name: Run
+        env:
+          TZ: Asia/Jerusalem
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          USER_ID: ${{ secrets.USER_ID }}
+          MOODLE_ICS_URL: ${{ secrets.MOODLE_ICS_URL }}
+          LIST: ${{ needs.decide.outputs.list }}
+        run: |
+          for w in $LIST; do
+            echo "::group::$w"
+            node automations/run-local.js "$w"
+            echo "::endgroup::"
+          done

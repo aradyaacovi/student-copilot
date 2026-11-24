@@ -106,3 +106,26 @@ node automations/run-local.js 1-moodle-sync
 ```
 
 הערה: מפתח סודי של Supabase נחסם כשהבקשה מגיעה מדפדפן (או מכלי שמזדהה כדפדפן). מ-Node ומ-n8n הוא עובד.
+
+## הרצה בענן (GitHub Actions) – בלי מחשב דולק
+
+הקובץ `.github/workflows/automations.yml` מריץ את סנכרון המודל, תדריך הבוקר והתזכורות לפי שעון ישראל, גם כשהמחשב כבוי. ההחלטה מתועדת ב-`docs/decisions/0001-run-automations-on-github-actions.md`.
+
+### הגדרה (פעם אחת)
+בריפו ב-GitHub: Settings ← Secrets and variables ← Actions ← New repository secret. ליצור ארבעה סודות, בדיוק בשמות האלה, עם הערכים מהקובץ `automations/.env`:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+- `USER_ID`
+- `MOODLE_ICS_URL`
+
+אסור להדביק את הערכים בצ'אט, בקוד או ב-issue.
+
+### בדיקה ראשונה
+Actions ← automations ← Run workflow ← לבחור `3-briefs`. אם עבר, ההודעה מופיעה באפליקציה. ריצה כפולה בטוחה: לכל הודעה יש מפתח ייחודי.
+
+### לדעת
+- GitHub מתזמן לפי UTC ועלול לאחר ריצה. לכן הריצה היא כל שעה, והתדריך והתזכורות מושלמים בשעה או שעתיים אחרי.
+- ריצה שנכשלת שולחת מייל על כשל מ-GitHub. כדאי לוודא שההתראות על Actions פעילות ב-Settings ← Notifications.
+- ב-repo ציבורי GitHub משבית workflow מתוזמן אחרי 60 יום בלי פעילות בריפו. אם הפרויקט שקט, להפעיל מחדש בלשונית Actions.
+- מייל שינויי לו"ז לא רץ בענן: הוא עדיין תלוי בטריגר IMAP של n8n (שלב 2).
