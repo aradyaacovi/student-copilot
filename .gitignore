@@ -10,3 +10,4 @@ automations/.env
 
 # הגדרות מקומיות של הסביבה
 .claude/
+summary_hw*.pdf
