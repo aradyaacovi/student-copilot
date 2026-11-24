@@ -21,7 +21,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # index.html also loads two files that are git-ignored on purpose: the
       # student's own semester data and the Supabase config. Empty stubs keep the
