@@ -13,11 +13,17 @@
  *
  * No browser found: skipped locally, but fails when CI is set (so CI can never silently skip).
  */
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const os = require("os");
 const path = require("path");
+
+// Node 20 has WebSocket only behind a flag (Node 22+ has it built in): run again with the flag.
+if (typeof WebSocket === "undefined") {
+  const r = spawnSync(process.execPath, ["--experimental-websocket", __filename], { stdio: "inherit" });
+  process.exit(r.status === null ? 1 : r.status);
+}
 
 const ROOT = path.join(__dirname, "..");
 const DATE = "2026-11-17";
