@@ -16,11 +16,11 @@
 
 ## חשוב
 
-### 1. סקריפט Supabase נטען מ-CDN בלי גרסה קבועה ובלי SRI
+### 1. סקריפט Supabase נטען מ-CDN בלי גרסה קבועה ובלי SRI (תוקן)
 `index.html` טוען `cdn.jsdelivr.net/npm/@supabase/supabase-js@2`. זו כל גרסה 2.x שתצא, והסקריפט רץ באותו דף שמחזיק את אסימון ההתחברות ב-localStorage. אם החבילה או ה-CDN נפרצים, התוקף קורא את האסימון ואת כל הנתונים.
 **המלצה:** לקבע גרסה מדויקת ולהוסיף `integrity="sha384-..."` עם `crossorigin="anonymous"`. אפשר גם להעתיק את הקובץ לריפו (`js/vendor/`), וזה גם נותן עבודה לא מקוונת. צריך אחר כך להעלות `VERSION` ב-`sw.js`.
 
-### 2. מייל מזויף יכול לשנות את הלו״ז אוטומטית
+### 2. מייל מזויף יכול לשנות את הלו״ז אוטומטית (תוקן)
 ב-`automations/lib/email.js:5,16` מייל נחשב רלוונטי אם `from` מכיל את המחרוזת `bgu.ac.il` (גם בשם התצוגה, שנקבע בידי השולח), **או** אם יש מילת מפתח בנושא או בגוף. כל אחד יכול לשלוח מייל. המודל מוגבל בסכמה (קורס מתוך רשימה, תאריך), אבל אם הוא מחזיר `confidence: high` ו-`is_my_group` שונה מ-`unknown`, השורה נכתבת ב-`status: applied` (שורה 157) והשיעור נמחק מהיומן בלי אישור. זו הזרקת פרומפט עם השפעה אמיתית אבל מוגבלת: לו״ז שגוי, לא דליפה.
 הגנות שכבר קיימות: תוכן המייל עטוף ב-`<email>`, והפלט מוגבל בסכמה.
 **המלצה:** (א) לקרוא את `Authentication-Results` (SPF/DKIM/DMARC עוברים) ולדרוש דומיין מדויק (`@bgu.ac.il` או כתובת ה-Moodle) על כתובת השולח עצמה, לא על שם התצוגה. (ב) מייל שלא עבר: תמיד `needs_review`, לעולם לא `applied`. (ג) להוסיף בדיקה שמדמה מייל מזויף. זה נוגע בקבצי האוטומציה, לכן לא תוקן כאן.
@@ -106,3 +106,6 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - ממצא 4 (א): `automations.yml`: ה-job `run` פוצל לחמישה jobs (`moodle`, `email`, `briefs`, `reminders`, `calendar`), כל אחד עם הסודות שלו בלבד. התקנת `imapflow` ו-`mailparser` רק ב-job המייל, בשלב בלי סודות. job המייל מקבל גם `ANTHROPIC_API_KEY`, כי בלעדיו המייל יורד לחילוץ לפי כללים (שינוי התנהגות). דילוג בריצה מתוזמנת בלי סיסמת Gmail נשמר, וכן תרגיל הכשל (`drill`). בדיקות חדשות ב-`tests/automations.test.js` נועלות את הסודות לכל job, את ההתקנה במייל בלבד, ואת היעדר הדפסת סודות.
   נשאר: (ב) `package-lock.json` עם `npm ci --ignore-scripts` לתלויות העקיפות של המייל, ו-(ג) מפתח Supabase מצומצם במקום `service_role`. שניהם לא בהיקף הזה.
 - ממצא 6: כל ה-Actions ב-`.github/workflows/*.yml` מקובעות ל-SHA מלא עם הערת גרסה מדויקת (`checkout` v7.0.1, `setup-node` v7.1.0, `deploy-pages` v5.0.1, `configure-pages` v6.0.0, `upload-pages-artifact` v5.0.0, `upload-artifact` v4.6.2). Dependabot (`github-actions`, שבועי) ממשיך לעדכן אותן ומעדכן גם את ההערה. ל-`test.yml` נוסף `permissions: contents: read`. בדיקה חדשה ב-`tests/automations.test.js` נכשלת אם נוספת action בלי SHA.
+- ממצא 1: `index.html`: `supabase-js@2.119.2/dist/umd/supabase.js` עם `integrity="sha384-..."` ו-`crossorigin="anonymous"`. ה-hash חושב מהקובץ שמוגש מ-jsDelivr (אותו תוכן כמו הכתובת הישנה, עם הערת כותרת בלבד). ה-CDN שולח `access-control-allow-origin: *`, ולכן בקשת ה-CORS עוברת, וה-service worker שומר עכשיו תשובה רגילה במקום opaque. `sw.js`: `VERSION` עלה ל-`v16`. בדיקה חדשה ב-`tests/logic.test.js`. כדי לעדכן גרסה: להחליף גרסה ו-hash יחד (`openssl dgst -sha384 -binary supabase.js | openssl base64 -A`). לא בוצע: העתקה ל-`js/vendor/` (עבודה לא מקוונת).
+- ממצא 2: `automations/lib/email.js`: `senderAddress` ו-`isInstitutionalSender` בודקות את הכתובת עצמה (לא שם התצוגה): דומיין `bgu.ac.il` או תת-דומיין. `interpret` מחיל שינוי (`applied`) רק משולח כזה ורק בביטחון גבוה. כל השאר `needs_review` עם הסבר בהודעה. ספק נשאר לאישור כמו קודם. 4 בדיקות חדשות עם מיילים סינתטיים (שם תצוגה מזויף, הוראות מזיקות בגוף, מייל תקין שמוחל). קבצי ה-workflow נבנו מחדש.
+  מה לא נעשה: בדיקת `Authentication-Results` (SPF/DKIM/DMARC). שדה `From` ניתן לזיוף גם בכתובת, ו-`fetch-mail.js` לא מעביר את הכותרת הזאת. זו עבודה נוספת בקוד מייל חי, מומלץ כהמשך. הודעות הגשה/מבחן (`events`) נכתבות כמו קודם, והן לא משנות את מערך השיעורים.

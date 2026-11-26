@@ -343,6 +343,8 @@ async function main() {
           const pathname = new URL(url).pathname;
           if (pathname === "/data/my-semester.js") return reply("text/javascript", "");   // personal data: never loaded
           if (pathname === "/js/config.js") return reply("text/javascript", mocks.config);
+          // The real page pins the CDN script with SRI (checked in logic.test.js). The stub below cannot match that hash, so only here the integrity attributes are dropped.
+          if (pathname === "/index.html") return reply("text/html", fs.readFileSync(path.join(ROOT, "index.html"), "utf8").replace(/ integrity="[^"]*"| crossorigin="[^"]*"/g, ""));
           if (pathname === "/favicon.ico") return reply("image/x-icon", "");
           if (pathname === "/tools-smoke-reset") return reply("text/html", "<!doctype html><title>reset</title>");
           return cdp.send("Fetch.continueRequest", { requestId: p.requestId });
