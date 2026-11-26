@@ -12,3 +12,6 @@ jobs:
         env: { TZ: Asia/Jerusalem }
       - run: node tests/ui.smoke.test.js
         env: { TZ: Asia/Jerusalem }
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: ui-failures, path: test-results, if-no-files-found: ignore }

@@ -115,9 +115,25 @@ async function open(query, { width = 1280, height = 900, mobile = false, seed, c
   await until(() => evaluate(`!!document.querySelector("#view") && document.querySelector("#view").innerHTML.length > 0`), "app render");
 }
 
+/** A failing test leaves a screenshot in test-results/ (CI uploads it as an artifact). */
+async function shot(name) {
+  try {
+    const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
+    const dir = path.join(ROOT, "test-results");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "ui-" + (results.length) + ".png");
+    fs.writeFileSync(file, Buffer.from(data, "base64"));
+    console.log("      screenshot:", path.relative(ROOT, file));
+  } catch (e) { console.log("      (no screenshot: " + e.message + ")"); }
+}
+
 async function test(name, fn) {
   try { await fn(); results.push({ name, pass: true }); console.log("  ✓", name); }
-  catch (e) { results.push({ name, pass: false, err: e.message }); console.log("  ✗", name, "\n     ", e.message); }
+  catch (e) {
+    results.push({ name, pass: false, err: e.message });
+    console.log("  ✗", name, "\n     ", e.message);
+    await shot(name);
+  }
 }
 
 const isCloud = (u) => /\.supabase\.co|smoke-test\.invalid/.test(u);
@@ -222,6 +238,25 @@ async function scenarios() {
     const seed = JSON.stringify({ dataOverride: { semester: { name: "ריק", start: "2026-10-01", end: "2027-01-31", dayEnd: "19:30" }, courses: [], deadlines: [] }, tab: "today" });
     await open(PIN, { seed });
     ok(await evaluate(`document.getElementById("view").innerHTML.length > 0`), "empty data: view is blank");
+    noErrors();
+  });
+
+  await test("grades: a typed grade is saved and the averages render", async () => {
+    await open(`${PIN}&tab=grades`);
+    ok(await evaluate(`document.querySelectorAll("#view .kpi .v").length >= 2`), "averages missing");
+    ok(await evaluate(`(() => { const i = document.querySelector("#view input[data-grade]"); if (!i) return false; i.value = "90"; i.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`), "no grade input");
+    const s = await until(async () => { const v = await stored(); return v && Object.keys(v.grades || {}).length ? v : null; }, "grade saved");
+    ok(JSON.stringify(s.grades).includes("90"), "grade value not saved");
+    noErrors();
+  });
+
+  await test("settings: opens and a changed setting is saved", async () => {
+    await open(`${PIN}&tab=settings`);
+    ok(await evaluate(`document.getElementById("pageTitle").textContent.length > 0 && document.getElementById("view").innerHTML.length > 200`), "settings view empty");
+    await click('#tabs [data-tab="today"]');
+    ok(await evaluate(`(() => { const i = document.querySelector("[data-setting='dailyHours']"); if (!i) return false; i.value = "6"; i.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`), "no daily-hours input");
+    const s = await until(async () => { const v = await stored(); return v && v.dailyHours === 6 ? v : null; }, "setting saved");
+    ok(s.dailyHours === 6, "dailyHours not saved");
     noErrors();
   });
 

@@ -10,3 +10,6 @@ automations/.env
 
 # הגדרות מקומיות של הסביבה
 .claude/
+
+# screenshots from failed UI smoke tests
+test-results/
