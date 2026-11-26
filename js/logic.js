@@ -595,6 +595,30 @@
     lines.push("END:VCALENDAR");
     return lines.join("\r\n");
   }
+  // ---------- בריאות הסנכרון ----------
+  // כמה שעות בלי ריצה מוצלחת נחשבות תקינות. סנכרון מודל רץ עד 22:00 ומתחדש ב-07:00, ולכן המרווח הלילי הוא 9 שעות.
+  const SYNC_LABEL = { "1-moodle-sync": "סנכרון מודל", "3-briefs": "תדריך בוקר", "4-reminders": "תזכורות" };
+  const SYNC_MAX_HOURS = { "1-moodle-sync": 12, "3-briefs": 30, "4-reminders": 30 };
+
+  /** rows: שורות sync_state. מחזיר { status: none|ok|stale|failing, text, items } */
+  function syncHealth(rows, now) {
+    const items = [];
+    for (const r of rows || []) {
+      if (!SYNC_LABEL[r.source]) continue;
+      const age = r.last_success ? (now - new Date(r.last_success)) / 3600000 : Infinity;
+      const status = r.failures > 0 ? "failing" : age > SYNC_MAX_HOURS[r.source] ? "stale" : "ok";
+      items.push({ source: r.source, label: SYNC_LABEL[r.source], status, ageHours: age, error: r.last_error || "" });
+    }
+    if (!items.length) return { status: "none", text: "", items };
+    const bad = items.filter((i) => i.status !== "ok");
+    const status = bad.some((i) => i.status === "failing") ? "failing" : bad.length ? "stale" : "ok";
+    const when = (h) => (h === Infinity ? "אף פעם" : h < 1 ? "לפני פחות משעה" : h < 48 ? `לפני ${Math.round(h)} שעות` : `לפני ${Math.round(h / 24)} ימים`);
+    const text = bad.length
+      ? bad.map((i) => `${i.label}: ${i.status === "failing" ? "נכשל, ההצלחה האחרונה " : "לא רץ, ההצלחה האחרונה "}${when(i.ageHours)}`).join(" · ")
+      : "כל האוטומציות רצו בזמן";
+    return { status, text, items };
+  }
+
   function hash(s) {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -609,6 +633,7 @@
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
     deadlineId, nextSessionAfter, applyRemote,
     estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
+    syncHealth, SYNC_LABEL,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;

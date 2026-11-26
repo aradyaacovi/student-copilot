@@ -39,4 +39,33 @@ async function loadContext(supa, userId, L) {
   };
 }
 
-module.exports = { makeSupa, loadContext };
+/**
+ * רושם דופק אחרי כל ריצה: הצלחה מאפסת את מונה הכשלונות, כשל מעלה אותו ומוסיף התראה בתיבת ההודעות
+ * (אחת ליום לכל workflow). אם הרישום עצמו נכשל לא זורקים, כדי לא להסתיר את השגיאה המקורית.
+ */
+async function recordRun(supa, userId, source, error, now, labels) {
+  const iso = now.toISOString();
+  try {
+    let failures = 0;
+    if (error) {
+      const prev = await supa.select("sync_state", `user_id=eq.${userId}&source=eq.${source}&select=failures`);
+      failures = ((prev[0] && prev[0].failures) || 0) + 1;
+    }
+    const row = error
+      ? { user_id: userId, source, last_attempt: iso, last_error: String(error).slice(0, 200), failures }
+      : { user_id: userId, source, last_attempt: iso, last_success: iso, last_error: null, failures: 0 };
+    await supa.upsert("sync_state", [row], "user_id,source", "merge");
+    if (error) {
+      const label = (labels && labels[source]) || source;
+      await supa.upsert("inbox", [{
+        user_id: userId, kind: "alert", title: `האוטומציה נכשלה: ${label}`,
+        body: String(error).slice(0, 200), dedupe_key: `syncfail|${source}|${iso.slice(0, 10)}`,
+      }], "user_id,dedupe_key", "ignore");
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+module.exports = { makeSupa, loadContext, recordRun };
