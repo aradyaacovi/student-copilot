@@ -719,6 +719,7 @@
   function render() {
     if (!VIEWS[state.tab]) state.tab = "today";
     applyTheme();
+    document.body.dataset.tab = state.tab;
     const unread = remote.inbox.filter((m) => !m.read).length;
     document.getElementById("tabs").innerHTML = Object.entries(VIEWS).filter(([, v]) => !v.hidden)
       .map(([k, v]) => `<button data-tab="${k}" class="${k === state.tab || VIEWS[state.tab].parent === k ? "active" : ""}" title="${v.title}">

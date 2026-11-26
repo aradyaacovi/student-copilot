@@ -347,3 +347,45 @@ code.uid { display: block; direction: ltr; text-align: left; padding: 8px 12px; 
 /* an hour-long slot has room for the course and the time, not the room number */
 .ev.short { font-size: .68rem; padding: 4px 7px; }
 .ev.short .muted { display: none; }
+
+/* ---------- UX review fixes (docs/UX_REVIEW.he.md) ---------- */
+/* AA contrast: text sits on a slightly deepened course hue; the hue itself stays the same family */
+.chip, .ev, .pin { background: color-mix(in srgb, var(--c, var(--accent)) 70%, #000); }
+.badge.week { background: #007a91; }
+.focus { background: color-mix(in srgb, var(--c, var(--accent)) 70%, #000); }
+.focus-nums b.hot { color: #ffd166; }
+.focus .muted, .focus-head .muted { color: rgba(255, 255, 255, .88); }
+.focus-eyebrow, .focus-why, .ribbon .rb-time, .ribbon i { opacity: .92; }
+:root { --accent-text: #d90f55; --accent-strong: #d90f55; }
+[data-theme=dark], [data-look] { --accent-text: var(--accent); --accent-strong: var(--accent); }
+a, button.link { color: var(--accent-text); }
+.rail button.active, .logo { background: var(--accent-strong); }
+[data-theme=dark] .rail button.active, [data-theme=dark] .logo { color: #17151f; }
+:root:not([data-theme=dark]) { --muted: #6b6674; }
+
+/* keyboard focus is always visible */
+:focus-visible { outline: 3px solid var(--accent-text); outline-offset: 2px; border-radius: 6px; }
+.focus :focus-visible, .rail :focus-visible { outline-color: #fff; }
+
+/* touch targets: grow the hit area without changing the layout */
+button.chip, button.link.sm { position: relative; }
+button.chip::after, button.link.sm::after { content: ""; position: absolute; inset: -13px -4px; }
+.rail button { min-width: 44px; }
+@media (pointer: coarse) {
+  button.btn.sm { min-height: 44px; }
+  .seen-item { min-height: 44px; }
+  input[type=checkbox] { width: 24px; height: 24px; }
+}
+
+/* mobile: the focus panel is the whole answer on "today" only; elsewhere it shrinks so the page title is visible */
+@media (max-width: 1080px) {
+  body:not([data-tab=today]) .focus-rest { display: none; }
+  body:not([data-tab=today]) .focus-now { padding-bottom: 14px; }
+  body:not([data-tab=today]) .focus-dur { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+/* dark theme: --ink is light, so the white button in the focus panel needs its own dark text */
+.focus .btn { color: #17151f; }
+.focus .btn.ghost { color: #fff; }
