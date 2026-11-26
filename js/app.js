@@ -55,12 +55,18 @@
   const ccolor = (id) => (byId[id] ? byId[id].color : "#94a3b8");
   const chip = (id) => (id ? `<button class="chip" data-course="${id}" style="--c:${ccolor(id)}" title="לדף הקורס">${esc(cname(id))}</button>` : "");
   let toastTimer;
-  const toast = (msg) => {
+  // a reversible action says so: the toast carries an undo button (no confirm dialogs)
+  let undoSnap = null;
+  const toast = (msg, snap) => {
     let el = document.getElementById("toast");
     if (!el) { el = document.createElement("div"); el.id = "toast"; document.body.appendChild(el); }
-    el.textContent = msg; el.classList.add("show");
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 1600);
+    undoSnap = snap || null;
+    el.textContent = msg;
+    if (snap) { const b = document.createElement("button"); b.className = "undo"; b.dataset.undo = "1"; b.textContent = "ביטול"; el.append(" ", b); }
+    el.classList.toggle("act", !!snap); el.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), snap ? 5000 : 1600);
   };
+  const snapState = () => JSON.stringify({ seen: state.seen, reviewed: state.reviewed, snooze: state.snooze, done: state.done });
   const applyTheme = () => {
     const dark = state.theme === "dark" || (state.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -349,7 +355,7 @@
           </li>`).join("")}</ol>` : `<p class="empty small">אין עוד שיעורים או משימות היום.</p>`}
         <div class="focus-nums">
           <div><b class="${behind ? "hot" : ""}">${behind}</b><span>לא נראו</span></div>
-          <div><b>${nextDl ? L.daysUntil(nextDl.date, now) : "—"}</b><span>${nextDl ? "ימים ל" + cname(nextDl.courseId) : "אין הגשה"}</span></div>
+          <div><b>${nextDl ? L.daysUntil(nextDl.date, now) : "—"}</b><span>${nextDl ? (L.daysUntil(nextDl.date, now) === 1 ? "יום ל" : "ימים ל") + cname(nextDl.courseId) : "אין הגשה"}</span></div>
           ${plan.overload ? `<div><b class="hot">+${hoursText(plan.overload)}</b><span>מעבר לזמן</span></div>` : ""}
         </div>
       </div>`;
@@ -740,19 +746,23 @@
   }
 
   document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-undo]") && undoSnap) {
+      Object.assign(state, JSON.parse(undoSnap)); undoSnap = null; save(); toast("בוטל");
+      return render();
+    }
     const cb = e.target.closest("[data-cloud]");
     if (cb) return cloudAction(cb.dataset.cloud, cb);
     const t = e.target.closest("[data-plandone],[data-snooze],[data-seenall],[data-course],[data-tab],[data-week],[data-action],[data-deltask],[data-sumcourse],[data-delnote]");
     if (!t) return;
     if (t.dataset.plandone) {
-      const id = t.dataset.plandone;
+      const id = t.dataset.plandone, snap = snapState();
       if (id.startsWith("pace|")) state.seen[id.slice(5)] = todayIso;
       else if (id.startsWith("rev|")) state.reviewed[id.slice(4)] = true;
       else if ((planItems().find((i) => i.id === id) || {}).kind === "exam") state.snooze[id] = L.iso(L.addDays(now, 1));
       else state.done[id] = true;
-      save(); toast("יפה! ✓");
+      save(); toast("יפה! ✓", snap);
     }
-    else if (t.dataset.snooze) { state.snooze[t.dataset.snooze] = L.iso(L.addDays(now, 1)); save(); toast("נדחה למחר"); }
+    else if (t.dataset.snooze) { const snap = snapState(); state.snooze[t.dataset.snooze] = L.iso(L.addDays(now, 1)); save(); toast("נדחה למחר", snap); }
     else if (t.dataset.seenall) {
       const c = byId[t.dataset.seenall];
       for (const it of L.paceStatus(c, data.semester, now, state.seen).items) if (!it.seen) state.seen[it.key] = true;

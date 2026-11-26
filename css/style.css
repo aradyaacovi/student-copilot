@@ -389,3 +389,5 @@ button.chip::after, button.link.sm::after { content: ""; position: absolute; ins
 /* dark theme: --ink is light, so the white button in the focus panel needs its own dark text */
 .focus .btn { color: #17151f; }
 .focus .btn.ghost { color: #fff; }
+#toast.act { pointer-events: auto; }
+#toast .undo { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 6px 4px; min-height: 44px; }
