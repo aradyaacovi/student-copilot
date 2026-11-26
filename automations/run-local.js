@@ -36,4 +36,5 @@ const http = async (o) => {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => [] });
   console.log(wf.name, "→", JSON.stringify(out.map((o) => o.json)));
-})().catch((e) => { console.error("נכשל:", e.message); process.exit(1); });
+})().catch((e) => { const why = e.cause && (e.cause.code || e.cause.name); // קוד שגיאה בלבד (למשל ENOTFOUND), בלי כתובות וערכים
+  console.error("נכשל:", e.message + (why ? " (" + why + ")" : "")); process.exit(1); });
