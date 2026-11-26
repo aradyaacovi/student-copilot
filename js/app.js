@@ -274,10 +274,12 @@
   const doneLabel = (it) => (it.kind === "exam" ? "למדתי היום" : it.kind === "catchup" ? "ראיתי" : "סיימתי");
 
   function planRow(it, withHours) {
+    const badge = L.dueBadge(it.daysLeft);
+    const meta = [badge && it.daysLeft < 0 ? "" : it.reason, it.weight ? `${it.weight}%` : "", it.snoozed ? "נדחה" : ""].filter(Boolean).map(esc).join(" · ");
     return `<div class="task" style="--c:${ccolor(it.courseId)}">
       <span class="kind">${KIND_ICON[it.kind] || "•"}</span>
-      <div style="flex:1"><div class="t">${chip(it.courseId)} ${esc(it.title)}</div>
-        <div class="meta">${esc(it.reason)}${it.weight ? ` · ${it.weight}%` : ""}${it.snoozed ? " · נדחה" : ""}</div></div>
+      <div style="flex:1"><div class="t">${chip(it.courseId)} ${esc(it.title)} ${badge ? `<span class="badge ${badge.cls}">${esc(badge.text)}</span>` : ""}</div>
+        <div class="meta">${meta}</div></div>
       ${withHours ? `<span class="hrs">${hoursText(it.hours)}</span>` : ""}
       <button class="btn ghost sm" data-plandone="${esc(it.id)}" title="${doneLabel(it)}">✓</button>
       ${withHours ? `<button class="link sm" data-snooze="${esc(it.id)}" title="לדחות למחר">⏭</button>` : ""}

@@ -179,6 +179,14 @@ test("יומן: השעות הפנויות יורדות לפי האירועים, 
   const other = L.calendarBusyForDay([ev("2026-11-26T12:00:00Z", "2026-11-26T14:00:00Z")], "2026-11-26"); // 14:00 עד 16:00
   assert.equal(L.freeHoursToday([], now, "19:30", 12) - L.freeHoursToday([], now, "19:30", 12, other), 2);
 });
+test("dueBadge: באיחור, היום, מחר ועוד יומיים. מעבר לכך אין תווית", () => {
+  assert.deepEqual(L.dueBadge(-3), { text: "באיחור של 3 ימים", cls: "now" });
+  assert.equal(L.dueBadge(-1).text, "באיחור של יום");
+  assert.deepEqual(L.dueBadge(0), { text: "היום", cls: "now" });
+  assert.deepEqual(L.dueBadge(1), { text: "מחר", cls: "soon" });
+  assert.equal(L.dueBadge(2).text, "עוד יומיים");
+  for (const x of [3, 30, null, undefined, NaN]) assert.equal(L.dueBadge(x), null);
+});
 test("adherence: סופרת רק ימים שעברו, בחלון, ומשימה שהושלמה אחר כך נחשבת", () => {
   const now = new Date(2026, 10, 26, 9, 0);
   const log = { "2026-11-26": ["x", "y"], "2026-11-25": ["a", "b", "c", "d"], "2026-11-24": ["e"], "2026-11-20": [], "2026-10-01": ["old"] };
