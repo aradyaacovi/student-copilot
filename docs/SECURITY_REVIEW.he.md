@@ -58,7 +58,7 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - `connect-src` חייב לכלול את דומיין Supabase, כולל `wss:` אם יש Realtime (כרגע אין שימוש בו). עם דומיין מותאם אישית צריך להוסיף אותו.
 - לבדוק בדפדפן אחרי ההוספה: כניסה, שמירה לענן, גופנים, הורדת גיבוי (blob).
 
-### 6. קיבוע Actions וברירת מחדל של הרשאות
+### 6. קיבוע Actions וברירת מחדל של הרשאות (תוקן)
 כל ה-Actions מקובעות לתג ראשי (`@v7`, `@v6`, `@v5`), תג שאפשר להזיז. `test.yml` בלי בלוק `permissions`, ולכן ההרשאה היא ברירת המחדל של הריפו.
 **המלצה:** להוסיף `permissions: contents: read` ל-`test.yml`, ולקבע ל-SHA מלא עם Dependabot לעדכונים (`github-actions`). ב-`automations.yml` ו-`pages.yml` ההרשאות כבר מינימליות (`contents: read`, ו-`pages`/`id-token` רק בפרסום).
 
@@ -103,8 +103,9 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - `js/app.js`: `esc = L.escapeHtml`; `safeUrl` בשלושה קישורים; `esc` ב-`data-course` של `chip`.
 - `tests/logic.test.js`: בדיקה אחת. כל 28 בדיקות הלוגיקה ו-38 בדיקות האוטומציה עוברות.
 - `sw.js`: `VERSION` עלה ל-`v15`, כי קבצי ליבה השתנו.
-- ממצא 1: `index.html`: `supabase-js@2.119.2/dist/umd/supabase.js` עם `integrity="sha384-..."` ו-`crossorigin="anonymous"`. ה-hash חושב מהקובץ שמוגש מ-jsDelivr (אותו תוכן כמו הכתובת הישנה, עם הערת כותרת בלבד). ה-CDN שולח `access-control-allow-origin: *`, ולכן בקשת ה-CORS עוברת, וה-service worker שומר עכשיו תשובה רגילה במקום opaque. `sw.js`: `VERSION` עלה ל-`v16`. בדיקה חדשה ב-`tests/logic.test.js`. כדי לעדכן גרסה: להחליף גרסה ו-hash יחד (`openssl dgst -sha384 -binary supabase.js | openssl base64 -A`). לא בוצע: העתקה ל-`js/vendor/` (עבודה לא מקוונת).
 - ממצא 4 (א): `automations.yml`: ה-job `run` פוצל לחמישה jobs (`moodle`, `email`, `briefs`, `reminders`, `calendar`), כל אחד עם הסודות שלו בלבד. התקנת `imapflow` ו-`mailparser` רק ב-job המייל, בשלב בלי סודות. job המייל מקבל גם `ANTHROPIC_API_KEY`, כי בלעדיו המייל יורד לחילוץ לפי כללים (שינוי התנהגות). דילוג בריצה מתוזמנת בלי סיסמת Gmail נשמר, וכן תרגיל הכשל (`drill`). בדיקות חדשות ב-`tests/automations.test.js` נועלות את הסודות לכל job, את ההתקנה במייל בלבד, ואת היעדר הדפסת סודות.
   נשאר: (ב) `package-lock.json` עם `npm ci --ignore-scripts` לתלויות העקיפות של המייל, ו-(ג) מפתח Supabase מצומצם במקום `service_role`. שניהם לא בהיקף הזה.
+- ממצא 6: כל ה-Actions ב-`.github/workflows/*.yml` מקובעות ל-SHA מלא עם הערת גרסה מדויקת (`checkout` v7.0.1, `setup-node` v7.1.0, `deploy-pages` v5.0.1, `configure-pages` v6.0.0, `upload-pages-artifact` v5.0.0, `upload-artifact` v4.6.2). Dependabot (`github-actions`, שבועי) ממשיך לעדכן אותן ומעדכן גם את ההערה. ל-`test.yml` נוסף `permissions: contents: read`. בדיקה חדשה ב-`tests/automations.test.js` נכשלת אם נוספת action בלי SHA.
+- ממצא 1: `index.html`: `supabase-js@2.119.2/dist/umd/supabase.js` עם `integrity="sha384-..."` ו-`crossorigin="anonymous"`. ה-hash חושב מהקובץ שמוגש מ-jsDelivr (אותו תוכן כמו הכתובת הישנה, עם הערת כותרת בלבד). ה-CDN שולח `access-control-allow-origin: *`, ולכן בקשת ה-CORS עוברת, וה-service worker שומר עכשיו תשובה רגילה במקום opaque. `sw.js`: `VERSION` עלה ל-`v16`. בדיקה חדשה ב-`tests/logic.test.js`. כדי לעדכן גרסה: להחליף גרסה ו-hash יחד (`openssl dgst -sha384 -binary supabase.js | openssl base64 -A`). לא בוצע: העתקה ל-`js/vendor/` (עבודה לא מקוונת).
 - ממצא 2: `automations/lib/email.js`: `senderAddress` ו-`isInstitutionalSender` בודקות את הכתובת עצמה (לא שם התצוגה): דומיין `bgu.ac.il` או תת-דומיין. `interpret` מחיל שינוי (`applied`) רק משולח כזה ורק בביטחון גבוה. כל השאר `needs_review` עם הסבר בהודעה. ספק נשאר לאישור כמו קודם. 4 בדיקות חדשות עם מיילים סינתטיים (שם תצוגה מזויף, הוראות מזיקות בגוף, מייל תקין שמוחל). קבצי ה-workflow נבנו מחדש.
   מה לא נעשה: בדיקת `Authentication-Results` (SPF/DKIM/DMARC). שדה `From` ניתן לזיוף גם בכתובת, ו-`fetch-mail.js` לא מעביר את הכותרת הזאת. זו עבודה נוספת בקוד מייל חי, מומלץ כהמשך. הודעות הגשה/מבחן (`events`) נכתבות כמו קודם, והן לא משנות את מערך השיעורים.

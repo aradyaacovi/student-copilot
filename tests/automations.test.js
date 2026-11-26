@@ -465,6 +465,35 @@ test("workflow מתוזמן: כל job מקבל רק את הסודות שהוא �
 });
 
 
+test("workflows: כל action מקובע ל-SHA מלא עם הערת גרסה (ו-Dependabot מעדכן אותן)", () => {
+  const dir = path.join(__dirname, "../.github/workflows");
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".yml"))) {
+    const uses = fs.readFileSync(path.join(dir, f), "utf8").split("\n").filter((l) => /^\s*(- )?uses:/.test(l));
+    assert.ok(uses.length, f);
+    for (const l of uses) assert.ok(/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/.test(l), f + ": " + l.trim());
+  }
+  assert.ok(/package-ecosystem: github-actions/.test(fs.readFileSync(path.join(__dirname, "../.github/dependabot.yml"), "utf8")));
+  assert.ok(/^permissions:\s*\n\s+contents: read/m.test(fs.readFileSync(path.join(dir, "test.yml"), "utf8")), "test.yml: הרשאת קריאה בלבד");
+});
+test("workflow מתוזמן: כל job מקבל רק את הסודות שהוא צריך, וספריות המייל רק ב-job המייל", () => {
+  const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
+  const jobs = splitJobs(y);
+  const S = ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID"];
+  const allowed = {
+    moodle: [...S, "MOODLE_ICS_URL"],
+    email: [...S, "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "ANTHROPIC_API_KEY"],
+    briefs: S, reminders: S,
+    calendar: [...S, "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
+  };
+  for (const [name, ok] of Object.entries(allowed)) assert.deepEqual(secretsIn(jobs[name]), [...ok].sort(), name);
+  assert.ok(jobs.email.includes("imapflow@") && jobs.email.includes("mailparser@"), "ספריות המייל מקובעות לגרסה");
+  for (const [name, body] of Object.entries(jobs)) if (name !== "email" && name !== "decide") assert.ok(!/imapflow|mailparser|npm install/.test(body), name + " לא מתקין ספריות");
+  assert.ok(!jobs.email.split("- name: Run")[0].includes("secrets."), "שלב ההתקנה רץ בלי סודות");
+  assert.deepEqual(secretsIn(jobs.decide), ["GOOGLE_REFRESH_TOKEN"], "שלב ההחלטה בודק רק קיום אסימון");
+  assert.ok(!/echo[^\n]*\$\{?(SUPABASE|GMAIL|GOOGLE|ANTHROPIC|MOODLE|USER_ID)|set -x|printenv/.test(y), "אין הדפסת סודות");
+});
+
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); passed++; console.log("✓", name); }
