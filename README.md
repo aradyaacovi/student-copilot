@@ -19,7 +19,7 @@ Built for Hebrew (RTL) first. No framework, no build step.
 | **Approach** | One prioritization function ranks every task by effort and slack, so the app shows one "now" task and a plan sized to today's free hours. |
 | **Stack** | Vanilla JavaScript, Supabase (Postgres, row-level security), n8n, Claude API for email interpretation, GitHub Actions |
 | **My part** | Designed and directed the product and its rules, used it daily across a seven-course semester; Claude Code implemented. See [How it was built](#how-it-was-built). |
-| **Proof** | 47 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
+| **Proof** | 51 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
 
 ![Today view](docs/screenshots/today.png)
 
@@ -133,7 +133,7 @@ Safety rules for the email workflow: email content is treated as data, never as 
 npm test
 ```
 
-47 tests, zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
+51 tests, zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
 
 ## Run it
 
