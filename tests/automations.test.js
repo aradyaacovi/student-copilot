@@ -231,8 +231,10 @@ test("מייל בלי מודל: ספק גורר לבדיקה, והודעה לא 
 });
 
 test("workflow מייל רץ גם בלי מפתח Anthropic ולא קורא ל-API", async () => {
-  const { db, calls } = await runWorkflow("2-email-changes.json", { noKey: true, inputs: [{ from: "x@bgu.ac.il", subject: "סטטיסטיקה ביטול הרצאה", textPlain: "הרצאה סטטיסטיקה ב-22.11 מבוטלת", date: "2026-11-16T16:00:00Z", metadata: { "message-id": "<m2>" } }] });
+  const { db, calls, out } = await runWorkflow("2-email-changes.json", { noKey: true, inputs: [{ from: "x@bgu.ac.il", subject: "סטטיסטיקה ביטול הרצאה", textPlain: "הרצאה סטטיסטיקה ב-22.11 מבוטלת", date: "2026-11-16T16:00:00Z", metadata: { "message-id": "<m2>" } }] });
   assert.ok(!calls.some((c) => c.url.includes("anthropic")));
+  // הלוג של GitHub Actions ציבורי: הפלט לא כולל נושאי מיילים או שמות
+  assert.ok(!JSON.stringify(out).includes("סטטיסטיקה"));
   assert.equal(db.schedule_changes.length, 1);
   assert.ok(db.inbox.length >= 1);
 });
