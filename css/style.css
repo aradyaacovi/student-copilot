@@ -379,9 +379,9 @@ button.chip::after, button.link.sm::after { content: ""; position: absolute; ins
 
 /* mobile: the focus panel is the whole answer on "today" only; elsewhere it shrinks so the page title is visible */
 @media (max-width: 1080px) {
-  body:not([data-tab=today]) .focus-rest { display: none; }
-  body:not([data-tab=today]) .focus-now { padding-bottom: 14px; }
-  body:not([data-tab=today]) .focus-dur { display: none; }
+  body:not([data-view=today]) .focus-rest { display: none; }
+  body:not([data-view=today]) .focus-now { padding-bottom: 14px; }
+  body:not([data-view=today]) .focus-dur { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
