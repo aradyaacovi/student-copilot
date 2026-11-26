@@ -144,6 +144,41 @@ test("busyMinutes: מאחד קטעים חופפים וסמוכים וגוזר ל
   assert.equal(L.busyMinutes([[0, 600]], 100, 200), 100);
   assert.equal(L.busyMinutes([], 0, 600), 0);
 });
+const ev = (s, e, extra) => ({ start: { dateTime: s }, end: { dateTime: e }, ...extra });
+test("יומן: אירוע רגיל הופך לקטע תפוס בשעון ישראל (קיץ ואחר כך חורף)", () => {
+  // 24.10.2026 עוד שעון קיץ (UTC+3), 26.10.2026 כבר שעון חורף (UTC+2)
+  assert.deepEqual(L.calendarBusyForDay([ev("2026-10-24T09:00:00Z", "2026-10-24T10:30:00Z")], "2026-10-24"), [{ start: "12:00", end: "13:30" }]);
+  assert.deepEqual(L.calendarBusyForDay([ev("2026-10-26T09:00:00Z", "2026-10-26T10:30:00Z")], "2026-10-26"), [{ start: "11:00", end: "12:30" }]);
+});
+test("יומן: מדלגים על ביטול, 'פנוי', יום שלם ואירוע שהאפליקציה כתבה", () => {
+  const day = "2026-11-26";
+  const t = ["2026-11-26T08:00:00Z", "2026-11-26T09:00:00Z"];
+  assert.equal(L.calendarBusyForDay([ev(...t, { status: "cancelled" })], day).length, 0);
+  assert.equal(L.calendarBusyForDay([ev(...t, { transparency: "transparent" })], day).length, 0);
+  assert.equal(L.calendarBusyForDay([{ start: { date: day }, end: { date: "2026-11-27" } }], day).length, 0);
+  assert.equal(L.calendarBusyForDay([ev(...t, { extendedProperties: { private: { copilot: "1" } } })], day).length, 0);
+  assert.equal(L.calendarBusyForDay([ev(...t)], day).length, 1);
+  assert.equal(L.calendarBusyForDay(null, day).length, 0);
+});
+test("יומן: אירוע שחוצה חצות נחתך ליום המבוקש", () => {
+  const e = [ev("2026-11-26T20:00:00Z", "2026-11-26T23:30:00Z")]; // 22:00 עד 01:30 למחרת
+  assert.deepEqual(L.calendarBusyForDay(e, "2026-11-26"), [{ start: "22:00", end: "24:00" }]);
+  assert.deepEqual(L.calendarBusyForDay(e, "2026-11-27"), [{ start: "00:00", end: "01:30" }]);
+  assert.equal(L.calendarBusyForDay(e, "2026-11-28").length, 0);
+});
+test("יומן: אירוע שמשקף הרצאה מוקלטת לא תופס זמן, אירוע אחר כן", () => {
+  const sessions = [{ start: "10:00", end: "12:00", session: { recorded: true } }, { start: "14:00", end: "16:00", session: {} }];
+  const busy = [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "16:00" }, { start: "12:30", end: "13:00" }];
+  assert.deepEqual(L.dropSessionEchoes(busy, sessions), [{ start: "14:00", end: "16:00" }, { start: "12:30", end: "13:00" }]);
+});
+test("יומן: השעות הפנויות יורדות לפי האירועים, בלי ספירה כפולה עם שיעור קיים", () => {
+  const now = new Date(2026, 10, 26, 8, 0);
+  const cls = [{ start: "10:00", end: "12:00", session: {} }];
+  const busy = L.calendarBusyForDay([ev("2026-11-26T08:00:00Z", "2026-11-26T09:00:00Z")], "2026-11-26"); // 10:00 עד 11:00 בישראל
+  assert.equal(L.freeHoursToday(cls, now, "19:30", 12, busy), L.freeHoursToday(cls, now, "19:30", 12)); // האירוע בתוך השיעור
+  const other = L.calendarBusyForDay([ev("2026-11-26T12:00:00Z", "2026-11-26T14:00:00Z")], "2026-11-26"); // 14:00 עד 16:00
+  assert.equal(L.freeHoursToday([], now, "19:30", 12) - L.freeHoursToday([], now, "19:30", 12, other), 2);
+});
 test("syncHealth: תקין, ישן, נכשל, וללא נתונים", () => {
   const now = new Date("2026-11-26T12:00:00Z");
   const ago = (h) => new Date(now - h * 3600000).toISOString();
