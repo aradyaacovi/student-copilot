@@ -298,6 +298,64 @@ test("מייל בלי מודל: ספק גורר לבדיקה, והודעה לא 
   assert.deepEqual([moved.type, moved.date, moved.new_date, moved.start_time, moved.location], ["moved", "2026-11-24", "2026-11-26", "10:00", "זום"]);
 });
 
+// מיילים סינתטיים (נכתבו לבדיקה, לא מועתקים ממיילים אמיתיים). הם נועלים את ההתנהגות הנוכחית של ruleExtract.
+const syn = (subject, text) => { const e = { ...mail, subject, text }; const r = Email.ruleExtract(e, DATA, L); return { e, r, it: r.items[0], a: Email.interpret(r, e, DATA, L) }; };
+
+test("מייל בלי מודל: ביטול בלי שם קורס לא מנחש קורס ולא נוגע בלו״ז", () => {
+  const { it, a } = syn("ביטול", "השיעור מחר מבוטל");
+  assert.deepEqual([it.course_id, it.confidence, it.date], ["unknown", "low", ""]);
+  assert.equal(a.changes.length, 0); // שום שינוי לא נכתב
+  assert.equal(a.inbox[0].title, "מייל לבירור – לא זוהה קורס");
+  // גם כשיש תאריך מפורש, בלי קורס אין שינוי
+  const dated = syn("Algorithms lecture cancelled", "The lecture on 24.11 is cancelled");
+  assert.equal(dated.it.course_id, "unknown");
+  assert.equal(dated.a.changes.length, 0);
+});
+
+test("מייל בלי מודל: שמות קורסים בקיצור, בקוד, ושני קורסים באותו מייל", () => {
+  assert.equal(syn("חק״ב: ביטול תרגול", "תרגול ב-23.11 לא יתקיים").it.course_id, "ops");
+  assert.equal(syn("אלגו – הרצאה לא תתקיים", "ב-24.11").it.course_id, "algo");
+  assert.equal(syn("000-1-0004", "ביטול ההרצאה ב-24.11").it.course_id, "algo");
+  // שני קורסים באותו מייל = לא מנחשים, ממשיכים ללא קורס ובלי ביטחון
+  const two = syn("אלגוריתמים וחק״ב", "תרגול ב-23.11 מבוטל");
+  assert.deepEqual([two.it.course_id, two.it.confidence], ["unknown", "low"]);
+  assert.equal(two.a.changes.length, 0);
+});
+
+test("מייל בלי מודל: הזזה עם שני תאריכים ושתי שעות, בהרצאה ובתרגול", () => {
+  const lec = syn("אלגוריתמים", "ההרצאה מ-24.11 הוזזה ל-26.11, מ-10:00 עד 12:00").it;
+  assert.deepEqual([lec.type, lec.date, lec.new_date, lec.start_time, lec.end_time], ["moved", "2026-11-24", "2026-11-26", "10:00", "12:00"]);
+  // בתרגול הקבוצה לא ידועה, אז זה תמיד לאישור
+  const tut = syn("אלגוריתמים", "התרגול מ-24.11 הוזז ל-26.11, מ-10:00 עד 12:00");
+  assert.equal(tut.a.changes[0].status, "needs_review");
+});
+
+test("מייל בלי מודל: ספק נשאר לאישור (בלי תאריך, תאריך שלא נופל על מופע, ביטול עם מספר טלפון)", () => {
+  assert.equal(syn("סטטיסטיקה ביטול", "הרצאה מבוטלת").a.changes[0].status, "needs_review"); // בלי תאריך
+  assert.equal(syn("סטטיסטיקה", "הרצאה 24/11 מבוטלת").a.changes[0].status, "needs_review"); // 24/11 הוא לא מופע של ההרצאה
+  const phone = syn("סטטיסטיקה", "ההרצאה בוטלה. טלפון 08-6472000, נא להתקשר");
+  assert.equal(phone.it.date, ""); // מספר הטלפון לא נקרא כתאריך
+  assert.equal(phone.a.changes[0].status, "needs_review");
+});
+
+test("מייל בלי מודל: פערים מוכרים (נועלים את ההתנהגות כדי ששינוי יהיה מודע)", () => {
+  // ניסוחי הזזה שחסרים ב-RE_MOVED: המייל נחשב לא רלוונטי ולכן נשמר כטופל בלי שום התראה
+  for (const t of ["ההרצאה של 24.11 הועברה משעה 10:00 לשעה 14:00", "התרגול של 24.11 יוזז", "ההרצאה הועברה לחדר אחר ב-24.11"]) {
+    assert.equal(syn("אלגוריתמים", t).r.relevant, false, t);
+  }
+  // ביטול והשלמה באותו מייל: רק הביטול נקלט, וההשלמה לא
+  const both = syn("אלגוריתמים", "ההרצאה של 24.11 בוטלה, תתקיים השלמה ב-1.12");
+  assert.deepEqual([both.it.type, both.it.date, both.it.new_date], ["cancelled", "2026-11-24", ""]);
+});
+
+test("מייל: כשל בהתחברות לג׳ימייל מתואר בהודעה בטוחה, בלי פרטים מהשרת", () => {
+  const { describeMailError } = require("../automations/fetch-mail.js");
+  const auth = describeMailError({ authenticationFailed: true, message: "secret@gmail.com rejected", responseText: "x" });
+  assert.ok(auth.includes("GMAIL_APP_PASSWORD") && !auth.includes("secret"));
+  assert.equal(describeMailError({ code: "ENOTFOUND", message: "getaddrinfo imap.gmail.com" }), "קריאת המייל נכשלה (ENOTFOUND)");
+  assert.equal(describeMailError(new Error("boom")).includes("boom"), false);
+});
+
 test("workflow מייל רץ גם בלי מפתח Anthropic ולא קורא ל-API", async () => {
   const { db, calls, out } = await runWorkflow("2-email-changes.json", { noKey: true, inputs: [{ from: "x@bgu.ac.il", subject: "סטטיסטיקה ביטול הרצאה", textPlain: "הרצאה סטטיסטיקה ב-22.11 מבוטלת", date: "2026-11-16T16:00:00Z", metadata: { "message-id": "<m2>" } }] });
   assert.ok(!calls.some((c) => c.url.includes("anthropic")));

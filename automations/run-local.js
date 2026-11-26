@@ -43,8 +43,15 @@ const http = async (o) => {
   // המייל נקרא מג׳ימייל (IMAP). הספריות מותקנות בענן בלבד, ומעבירים אותן פנימה כדי שהבדיקות ירוצו בלי רשת.
   let mail = null;
   if (what === "2-email-changes") {
-    const { fetchNewMail } = require("./fetch-mail.js");
-    mail = await fetchNewMail({ address: env.GMAIL_ADDRESS, password: env.GMAIL_APP_PASSWORD }, { ImapFlow: require("imapflow").ImapFlow, simpleParser: require("mailparser").simpleParser });
+    const { fetchNewMail, describeMailError } = require("./fetch-mail.js");
+    try {
+      mail = await fetchNewMail({ address: env.GMAIL_ADDRESS, password: env.GMAIL_APP_PASSWORD }, { ImapFlow: require("imapflow").ImapFlow, simpleParser: require("mailparser").simpleParser });
+    } catch (e) {
+      // כשל בהתחברות לג׳ימייל חייב להיות מדווח באפליקציה, לא רק בלוג של GitHub.
+      const msg = describeMailError(e);
+      await heartbeat(msg);
+      throw new Error(msg);
+    }
   }
   const inputs = mail ? mail.items : [];
   let out;
