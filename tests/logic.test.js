@@ -196,6 +196,14 @@ test("adherence: סופרת רק ימים שעברו, בחלון, ומשימה �
   assert.deepEqual(L.adherence({}, () => true, now), { days: 0, planned: 0, done: 0, pct: null });
   assert.equal(L.adherence(null, () => true, now).pct, null);
 });
+test("syncHealth: סנכרון יומן נחשב ישן אחרי 3 שעות", () => {
+  const now = new Date("2026-11-26T12:00:00Z");
+  const row = (h) => ({ source: "5-calendar-sync", last_success: new Date(now - h * 3600000).toISOString(), failures: 0 });
+  assert.equal(L.syncHealth([row(2)], now).status, "ok");
+  const r = L.syncHealth([row(5)], now);
+  assert.equal(r.status, "stale");
+  assert.ok(r.text.includes("סנכרון יומן"));
+});
 test("syncHealth: תקין, ישן, נכשל, וללא נתונים", () => {
   const now = new Date("2026-11-26T12:00:00Z");
   const ago = (h) => new Date(now - h * 3600000).toISOString();

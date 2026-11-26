@@ -15,6 +15,11 @@ function makeSupa(http, url, key) {
             Prefer: `resolution=${mode === "merge" ? "merge" : "ignore"}-duplicates,return=representation`,
           })
         : Promise.resolve([]),
+    /** מוחק שורות לפי תנאי. חובה לתת תנאי, כדי שלא יימחקו כל השורות בטעות. */
+    remove: (table, query) => {
+      if (!query) throw new Error("remove דורש תנאי");
+      return req("DELETE", `${table}?${query}`, undefined, { Prefer: "return=minimal" });
+    },
     update: (table, query, patch) => req("PATCH", `${table}?${query}`, patch, { Prefer: "return=representation" }),
   };
 }

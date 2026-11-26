@@ -13,7 +13,7 @@ on:
       which:
         description: "מה להריץ עכשיו"
         type: choice
-        options: [1-moodle-sync, 2-email-changes, 3-briefs, 4-reminders]
+        options: [1-moodle-sync, 2-email-changes, 3-briefs, 4-reminders, 5-calendar-sync]
         default: 3-briefs
 
 permissions:
@@ -33,6 +33,8 @@ jobs:
         env:
           WHICH: ${{ inputs.which }}
           EVENT: ${{ github.event_name }}
+          # סנכרון היומן כבוי עד שהוגדר אסימון. בלי זה הוא היה נכשל כל שעה ומציף התראות.
+          HAS_GCAL: ${{ secrets.GOOGLE_REFRESH_TOKEN != '' }}
         run: |
           H=$(TZ=Asia/Jerusalem date +%-H)
           list=""
@@ -43,6 +45,7 @@ jobs:
             case "$H" in 8|12|16|20) list="$list 2-email-changes" ;; esac
             case "$H" in 7|8|9) list="$list 3-briefs" ;; esac
             case "$H" in 18|19|20) list="$list 4-reminders" ;; esac
+            if [ "$HAS_GCAL" = "true" ] && [ "$H" -ge 7 ] && [ "$H" -le 22 ]; then list="$list 5-calendar-sync"; fi
           fi
           list=$(echo $list)
           echo "שעה בישראל: $H, להריץ: ${list:-כלום}"
@@ -68,6 +71,9 @@ jobs:
           USER_ID: ${{ secrets.USER_ID }}
           MOODLE_ICS_URL: ${{ secrets.MOODLE_ICS_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           LIST: ${{ needs.decide.outputs.list }}

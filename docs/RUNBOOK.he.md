@@ -23,6 +23,7 @@
 | סנכרון מודל נכשל ב-HTTP 4xx | קישור היומן של מודל פג או הוחלף | במודל: יומן ← ייצוא ← להעתיק קישור חדש ולעדכן את `MOODLE_ICS_URL` |
 | כשל ב-HTTP 401 מול Supabase | מפתח השירות הוחלף | לעדכן את `SUPABASE_SERVICE_KEY` |
 | אין ריצות בכלל | GitHub משבית workflow מתוזמן אחרי 60 ימים בלי פעילות בריפו | Actions ← automations ← Enable workflow, ולהריץ ידנית |
+| סנכרון יומן: "האישור של Google פג" | האסימון פג (תוקף שבוע במצב בדיקה) או בוטל | `node tools/google-auth.js` ואז לעדכן את `GOOGLE_REFRESH_TOKEN` ב-GitHub. ראי docs/CALENDAR_SETUP.he.md |
 | ריצה מתעכבת בשעה או שעתיים | עומס אצל GitHub | לא צריך לעשות כלום. הודעות לא נכפלות |
 
 ## הרצה ידנית
