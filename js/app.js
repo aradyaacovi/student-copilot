@@ -25,7 +25,7 @@
   let source = DEMO ? "sample" : state.dataOverride ? "import" : window.SEMESTER_DATA ? "mine" : "sample";
   let baseData = DEMO ? window.SAMPLE_DATA : state.dataOverride || window.SEMESTER_DATA || window.SAMPLE_DATA;
   let data, courses, byId, previous;
-  const remote = { events: [], changes: [], inbox: [], sync: [] };
+  const remote = { events: [], changes: [], inbox: [], sync: [], busy: [] };
   function setData() {
     data = L.applyRemote(baseData, remote);
     courses = data.courses;
@@ -123,13 +123,14 @@
 
   async function cloudPull() {
     const c = cloud.client;
-    const [sd, us, ev, ch, ib, sy] = await Promise.all([
+    const [sd, us, ev, ch, ib, sy, cb] = await Promise.all([
       c.from("semester_data").select("data,updated_at").maybeSingle(),
       c.from("user_state").select("state,updated_at").maybeSingle(),
       c.from("events").select("*").order("date"),
       c.from("schedule_changes").select("*").neq("status", "rejected"),
       c.from("inbox").select("*").order("created_at", { ascending: false }).limit(40),
       c.from("sync_state").select("*"), // אם הטבלה עוד לא נוצרה: מתעלמים בשקט ולא מציגים חיווי
+      c.from("calendar_busy").select("date,start_time,end_time").gte("date", todayIso),
     ]);
     const err = [sd, us, ev, ch, ib].find((r) => r.error);
     if (err) { cloud.status = "error"; cloud.error = err.error.message; return; }
@@ -141,6 +142,7 @@
     remote.review = (ch.data || []).filter((x) => x.status === "needs_review");
     remote.inbox = ib.data || [];
     remote.sync = sy.error ? [] : sy.data || [];
+    remote.busy = cb.error ? [] : cb.data || [];
     setData();
   }
 
@@ -252,10 +254,17 @@
   }
   function currentPlan() {
     const todays = L.sessionsOnDate(courses, data.semester, todayIso);
-    const capacity = L.freeHoursToday(todays, now, data.semester.dayEnd, Number(state.dailyHours) || 4);
+    const capacity = L.freeHoursToday(todays, now, data.semester.dayEnd, Number(state.dailyHours) || 4, calendarBusyToday(todays));
     const plan = L.buildPlan(planItems(), now, { capacity, hoursPerDay: Math.max(1, (Number(state.dailyHours) || 4) - 1) });
     logTodaysPlan(plan);
     return { todays, plan };
+  }
+  // זמן תפוס מהיומן להיום. אם סנכרון היומן ישן או נכשל, מתעלמים ממנו וחוזרים להנחה הקודמת במקום להסתמך על מידע לא עדכני.
+  function calendarBusyToday(todays) {
+    const cal = L.syncHealth(remote.sync, now).items.find((i) => i.source === "5-calendar-sync");
+    if (!cal || cal.status !== "ok") return [];
+    const busy = remote.busy.filter((r) => r.date === todayIso).map((r) => ({ start: r.start_time, end: r.end_time }));
+    return L.dropSessionEchoes(busy, todays);
   }
   // מצלמים את תוכנית הבוקר פעם אחת ביום, כדי שאפשר יהיה למדוד כמה ממנה בוצע. לא בדמו ולא בתאריך מקובע.
   function logTodaysPlan(plan) {

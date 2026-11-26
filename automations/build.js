@@ -12,6 +12,7 @@ const PRELUDE = [
   wrap("Moodle", read("lib/moodle.js")),
   wrap("Email", read("lib/email.js")),
   wrap("Briefs", read("lib/briefs.js")),
+  wrap("Gcal", read("lib/gcal.js")),
   `const ENV = { url: $env.SUPABASE_URL, key: $env.SUPABASE_SERVICE_KEY, user: $env.USER_ID };
 if (!ENV.url || !ENV.key || !ENV.user) throw new Error("חסרים SUPABASE_URL / SUPABASE_SERVICE_KEY / USER_ID ב-automations/.env");
 const http = (o) => this.helpers.httpRequest(o);
@@ -75,6 +76,20 @@ if (now.getDay() === 0) items.push(Briefs.weeklyBrief(ctx, L, now));
 const saved = await postInbox(items);
 return [{ json: { saved: saved.length, titles: items.map((i) => i.title) } }];`,
 
+  calendar: `
+for (const k of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]) if (!$env[k]) throw new Error("חסר " + k);
+const DAYS = 14;
+const token = await Gcal.accessToken(http, $env);
+const timeMin = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+const timeMax = new Date(now.getTime() + (DAYS + 1) * 24 * 3600 * 1000).toISOString();
+const events = await Gcal.fetchEvents(http, token, $env.GOOGLE_CALENDAR_ID || "primary", timeMin, timeMax);
+const today = L.iso(now);
+const rows = Gcal.busyRows(events, today, DAYS, L);
+// מחליפים את הטווח כולו: קודם מוחקים מהיום והלאה, ואז כותבים את מה שנקרא עכשיו
+await supa.remove("calendar_busy", \`user_id=eq.\${ENV.user}&date=gte.\${today}\`);
+await supa.upsert("calendar_busy", withUser(rows), "user_id,date,start_time,end_time", "ignore");
+return [{ json: { events: events.length, busy: rows.length } }];`,
+
   reminders: `
 const ctx = await Common.loadContext(supa, ENV.user, L);
 const items = Briefs.reminders(ctx, L, now);
@@ -109,6 +124,11 @@ const workflows = {
     name: "Copilot · תדריך בוקר (וביום א׳ גם שבועי)",
     nodes: [cron("23 7 * * *", "כל בוקר 07:23"), manual, code("brief", MAIN.brief, [260, 100])],
     connections: { ...link("כל בוקר 07:23", "Copilot"), ...link("בדיקה ידנית", "Copilot") },
+  },
+  "5-calendar-sync": {
+    name: "Copilot · סנכרון יומן Google, קריאה בלבד (כל שעה)",
+    nodes: [cron("5 7-22 * * *", "כל שעה"), manual, code("calendar", MAIN.calendar, [260, 100])],
+    connections: { ...link("כל שעה", "Copilot"), ...link("בדיקה ידנית", "Copilot") },
   },
   "4-reminders": {
     name: "Copilot · תזכורות הגשה ומבחן (18:00)",

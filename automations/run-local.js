@@ -10,7 +10,9 @@ const envPath = path.join(__dirname, ".env");
 // בענן (GitHub Actions) אין קובץ .env: ההגדרות מגיעות ממשתני סביבה.
 const env = loadEnv(fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "", process.env);
 const http = async (o) => {
-  const res = await fetch(o.url, { method: o.method, headers: o.headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
+  // גוף שכבר מחרוזת (למשל טופס של Google) נשלח כמו שהוא. אובייקט נשלח כ-JSON.
+  const body = o.body === undefined ? undefined : typeof o.body === "string" ? o.body : JSON.stringify(o.body);
+  const res = await fetch(o.url, { method: o.method, headers: o.headers, body });
   const text = await res.text();
   if (!res.ok) throw new Error(`${o.method} ${o.url.split("?")[0]} → HTTP ${res.status}: ${text.slice(0, 300)}`);
   if (o.json === false) return text;

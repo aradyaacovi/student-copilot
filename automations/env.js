@@ -1,6 +1,6 @@
 // טוען את הגדרות האוטומציות: מקובץ automations/.env אם קיים, ומשתני סביבה (GitHub Actions).
 // משתני סביבה גוברים על הקובץ. הערכים לעולם לא מודפסים.
-const KEYS = ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "MOODLE_ICS_URL", "ANTHROPIC_API_KEY", "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"];
+const KEYS = ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "MOODLE_ICS_URL", "ANTHROPIC_API_KEY", "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN", "GOOGLE_CALENDAR_ID"];
 
 // נדרש לכל workflow. מה שחסר מחזיר שגיאה עם שמות בלבד.
 const REQUIRED = {
@@ -9,6 +9,7 @@ const REQUIRED = {
   "2-email-changes": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"],
   "3-briefs": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID"],
   "4-reminders": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID"],
+  "5-calendar-sync": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
 };
 
 // מנקה ערך שהודבק: רווחים וירידות שורה, מירכאות, קידומת "NAME=" וקו נטוי בסוף כתובת.

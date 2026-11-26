@@ -114,6 +114,7 @@ The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARC
 | Moodle sync | every 3 hours | Reads the Moodle iCal feed, matches each event to a course by its course number, upserts deadlines and alerts on new ones |
 | Email changes *(off)* | new email (IMAP) | Extracts cancellations, make-ups, moves and new deadlines; applies confident ones, queues uncertain ones for approval |
 | Morning brief | daily 07:23, weekly on Sunday | Today's classes, top priorities, pace per course, what changed |
+| Calendar sync *(off until configured)* | hourly, 07:00-22:00 | Reads busy hours only (never titles) from Google Calendar, read-only; the plan then subtracts them from free time. Setup: [docs/CALENDAR_SETUP.he.md](docs/CALENDAR_SETUP.he.md) |
 | Reminders | daily 18:00 | Due tomorrow, large submission in 3 days, time to start exam prep, unwatched lecture before tomorrow's tutorial |
 
 The email workflow ships disabled: Gmail over IMAP needs an app password, which Google only offers on accounts with 2-Step Verification turned on. Everything else runs.

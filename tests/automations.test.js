@@ -83,21 +83,24 @@ test("תדריכים ותזכורות", () => {
 });
 
 // ---------- הרצת ה-workflows עצמם בסביבת n8n מדומה ----------
-function runWorkflow(file, { inputs = [], claude, noKey } = {}) {
+function runWorkflow(file, { inputs = [], claude, noKey, extraEnv = {}, google } = {}) {
   const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "../automations/workflows", file), "utf8"));
   const node = wf.nodes.find((n) => n.type === "n8n-nodes-base.code");
-  const db = { inbox: [], events: [], schedule_changes: [] };
+  const db = { inbox: [], events: [], schedule_changes: [], calendar_busy: [] };
   const calls = [];
   const http = async (o) => {
     calls.push(o);
     if (o.url.startsWith("https://api.anthropic.com")) return claude;
     if (o.url === "https://moodle.example/ics") return ICS;
+    if (o.url.startsWith("https://oauth2.googleapis.com")) return google.token;
+    if (o.url.startsWith("https://www.googleapis.com/calendar")) return google.events;
+    if (o.method === "DELETE") { const tb = o.url.split("/rest/v1/")[1].split("?")[0]; db[tb] = []; return ""; }
     const table = o.url.split("/rest/v1/")[1].split("?")[0];
     if (o.method === "GET") return table === "semester_data" ? [{ data: DATA }] : table === "user_state" ? [{ state: {} }] : [];
     if (o.method === "POST") { const rows = o.body.map((r, i) => ({ id: db[table].length + i + 1, ...r })); db[table].push(...rows); return rows; }
     return [];
   };
-  const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ...(noKey ? {} : { ANTHROPIC_API_KEY: "test" }) };
+  const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ...(noKey ? {} : { ANTHROPIC_API_KEY: "test" }), ...extraEnv };
   const $input = { all: () => inputs.map((json) => ({ json })) };
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   // שעון קבוע: נתוני הדוגמה הם מנובמבר 2026, והבדיקה לא תלויה בתאריך ההרצה
@@ -119,6 +122,71 @@ test("workflow מייל רץ: Claude מחזיר ביטול → שינוי לו״
   assert.equal(db.inbox[0].ref_id, 1);
   const req = calls.find((c) => c.url.includes("anthropic"));
   assert.equal(req.headers["anthropic-version"], "2026-10-21");
+});
+const GENV = { GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "sec", GOOGLE_REFRESH_TOKEN: "rt" };
+const gEvent = (s, e, extra) => ({ start: { dateTime: s }, end: { dateTime: e }, ...extra });
+test("יומן: בקשת אסימון בצורת טופס, ושגיאת invalid_grant מוסברת בעברית", async () => {
+  const Gcal = require("../automations/lib/gcal.js");
+  let req;
+  const tok = await Gcal.accessToken(async (o) => { req = o; return { access_token: "tkn" }; }, GENV);
+  assert.equal(tok, "tkn");
+  assert.equal(req.url, "https://oauth2.googleapis.com/token");
+  assert.equal(req.headers["Content-Type"], "application/x-www-form-urlencoded");
+  assert.equal(typeof req.body, "string");
+  assert.ok(req.body.includes("grant_type=refresh_token") && req.body.includes("refresh_token=rt"));
+  await assert.rejects(Gcal.accessToken(async () => { throw new Error("HTTP 400: invalid_grant"); }, GENV), /פג או בוטל/);
+  await assert.rejects(Gcal.accessToken(async () => ({}), GENV), /אסימון גישה/);
+});
+test("יומן: שליפה בדפים, ובלי לבקש כותרות או מיקומים (פרטיות)", async () => {
+  const Gcal = require("../automations/lib/gcal.js");
+  const urls = [];
+  const pages = [{ items: [{ id: 1 }], nextPageToken: "p2" }, { items: [{ id: 2 }] }];
+  const out = await Gcal.fetchEvents(async (o) => { urls.push(o.url); return pages[urls.length - 1]; }, "t", "primary", "2026-11-18T00:00:00Z", "2026-12-04T00:00:00Z");
+  assert.equal(out.length, 2);
+  assert.ok(urls[1].includes("pageToken=p2") && urls[0].includes("singleEvents=true"));
+  const fields = new URL(urls[0]).searchParams.get("fields");
+  assert.ok(!/summary|location|attendees|description/.test(fields), fields);
+});
+test("workflow יומן רץ: מוחק את הטווח, כותב זמן תפוס, ומדלג על פנוי ויום שלם", async () => {
+  const google = { token: { access_token: "t" }, events: { items: [
+    gEvent("2026-11-19T07:00:00Z", "2026-11-19T08:00:00Z"), // 09:00 עד 10:00 בישראל
+    gEvent("2026-11-20T10:00:00Z", "2026-11-20T11:30:00Z"),
+    gEvent("2026-11-19T12:00:00Z", "2026-11-19T13:00:00Z", { transparency: "transparent" }),
+    { start: { date: "2026-11-19" }, end: { date: "2026-11-20" } },
+  ] } };
+  const { out, db, calls } = await runWorkflow("5-calendar-sync.json", { extraEnv: GENV, google });
+  assert.deepEqual(out[0].json, { events: 4, busy: 2 });
+  assert.deepEqual(db.calendar_busy.map((r) => [r.date, r.start_time, r.end_time, r.user_id]), [["2026-11-19", "09:00", "10:00", "u1"], ["2026-11-20", "12:00", "13:30", "u1"]]);
+  const del = calls.find((c) => c.method === "DELETE");
+  assert.ok(del.url.includes("calendar_busy") && del.url.includes("user_id=eq.u1") && del.url.includes("date=gte.2026-11-19"));
+});
+test("workflow יומן: הפלט והשורות שנכתבות כוללים מספרים ושעות בלבד, בלי כותרת, מיקום או משתתפים", async () => {
+  // גם אם Google היה מחזיר שדות פרטיים, אסור שיגיעו לפלט (שנשמר בלוג ציבורי) או לבסיס הנתונים
+  const secret = { summary: "פגישה עם הרופא הפרטי", location: "רחוב סודי 5", attendees: [{ email: "someone@example.com" }], description: "פרטים רגישים" };
+  const google = { token: { access_token: "t" }, events: { items: [gEvent("2026-11-19T07:00:00Z", "2026-11-19T08:00:00Z", secret)] } };
+  const { out, db } = await runWorkflow("5-calendar-sync.json", { extraEnv: GENV, google });
+  const shown = JSON.stringify(out) + JSON.stringify(db.calendar_busy);
+  for (const s of ["פגישה", "הרופא", "סודי", "someone@example.com", "רגישים"]) assert.ok(!shown.includes(s), s);
+  assert.deepEqual(Object.keys(out[0].json).sort(), ["busy", "events"]);
+  assert.deepEqual(Object.keys(db.calendar_busy[0]).filter((k) => k !== "id").sort(), ["date", "end_time", "start_time", "user_id"]); // id מוסיף רק הדמיית בסיס הנתונים
+  // גם הודעת שגיאה מבקשה שנכשלה לא מכילה תוכן אירועים
+  const Gcal = require("../automations/lib/gcal.js");
+  await assert.rejects(Gcal.fetchEvents(async () => { throw new Error("GET https://www.googleapis.com/calendar/v3/calendars/primary/events → HTTP 500"); }, "t", "primary", "a", "b"), (e) => !/פגישה|רופא/.test(e.message));
+});
+test("workflow יומן: בלי הגדרות Google נכשל בהודעה ברורה", async () => {
+  await assert.rejects(runWorkflow("5-calendar-sync.json", { extraEnv: { GOOGLE_CLIENT_ID: "x" } }), /חסר GOOGLE_CLIENT_SECRET/);
+});
+test("הגדרות: סנכרון יומן דורש את שלושת סודות Google, ורץ ב-Actions רק כשהאסימון קיים", () => {
+  const { REQUIRED } = require("../automations/env.js");
+  for (const k of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]) assert.ok(REQUIRED["5-calendar-sync"].includes(k), k);
+  const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
+  assert.ok(y.includes("HAS_GCAL") && y.includes("secrets.GOOGLE_REFRESH_TOKEN"));
+  assert.ok(/[ "$HAS_GCAL" = "true" ]/.test(y), "הריצה מותנית בקיום האסימון");
+});
+test("remove: דורש תנאי כדי שלא יימחקו כל השורות", () => {
+  const { makeSupa } = require("../automations/lib/common.js");
+  const supa = makeSupa(async () => [], "https://x.supabase.co", "k");
+  assert.throws(() => supa.remove("calendar_busy", ""), /דורש תנאי/);
 });
 test("workflow תדריך ותזכורות רצים", async () => {
   assert.ok((await runWorkflow("3-briefs.json")).db.inbox.some((m) => m.kind === "brief"));
