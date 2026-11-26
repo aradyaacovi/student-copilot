@@ -16,7 +16,7 @@
 
 ## חשוב
 
-### 1. סקריפט Supabase נטען מ-CDN בלי גרסה קבועה ובלי SRI
+### 1. סקריפט Supabase נטען מ-CDN בלי גרסה קבועה ובלי SRI (תוקן)
 `index.html` טוען `cdn.jsdelivr.net/npm/@supabase/supabase-js@2`. זו כל גרסה 2.x שתצא, והסקריפט רץ באותו דף שמחזיק את אסימון ההתחברות ב-localStorage. אם החבילה או ה-CDN נפרצים, התוקף קורא את האסימון ואת כל הנתונים.
 **המלצה:** לקבע גרסה מדויקת ולהוסיף `integrity="sha384-..."` עם `crossorigin="anonymous"`. אפשר גם להעתיק את הקובץ לריפו (`js/vendor/`), וזה גם נותן עבודה לא מקוונת. צריך אחר כך להעלות `VERSION` ב-`sw.js`.
 
@@ -103,3 +103,4 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - `js/app.js`: `esc = L.escapeHtml`; `safeUrl` בשלושה קישורים; `esc` ב-`data-course` של `chip`.
 - `tests/logic.test.js`: בדיקה אחת. כל 28 בדיקות הלוגיקה ו-38 בדיקות האוטומציה עוברות.
 - `sw.js`: `VERSION` עלה ל-`v15`, כי קבצי ליבה השתנו.
+- ממצא 1: `index.html`: `supabase-js@2.119.2/dist/umd/supabase.js` עם `integrity="sha384-..."` ו-`crossorigin="anonymous"`. ה-hash חושב מהקובץ שמוגש מ-jsDelivr (אותו תוכן כמו הכתובת הישנה, עם הערת כותרת בלבד). ה-CDN שולח `access-control-allow-origin: *`, ולכן בקשת ה-CORS עוברת, וה-service worker שומר עכשיו תשובה רגילה במקום opaque. `sw.js`: `VERSION` עלה ל-`v16`. בדיקה חדשה ב-`tests/logic.test.js`. כדי לעדכן גרסה: להחליף גרסה ו-hash יחד (`openssl dgst -sha384 -binary supabase.js | openssl base64 -A`). לא בוצע: העתקה ל-`js/vendor/` (עבודה לא מקוונת).
