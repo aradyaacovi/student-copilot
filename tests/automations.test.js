@@ -83,7 +83,7 @@ test("תדריכים ותזכורות", () => {
 });
 
 // ---------- הרצת ה-workflows עצמם בסביבת n8n מדומה ----------
-function runWorkflow(file, { inputs = [], claude } = {}) {
+function runWorkflow(file, { inputs = [], claude, noKey } = {}) {
   const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "../automations/workflows", file), "utf8"));
   const node = wf.nodes.find((n) => n.type === "n8n-nodes-base.code");
   const db = { inbox: [], events: [], schedule_changes: [] };
@@ -97,7 +97,7 @@ function runWorkflow(file, { inputs = [], claude } = {}) {
     if (o.method === "POST") { const rows = o.body.map((r, i) => ({ id: db[table].length + i + 1, ...r })); db[table].push(...rows); return rows; }
     return [];
   };
-  const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ANTHROPIC_API_KEY: "test" };
+  const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ...(noKey ? {} : { ANTHROPIC_API_KEY: "test" }) };
   const $input = { all: () => inputs.map((json) => ({ json })) };
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   // שעון קבוע: נתוני הדוגמה הם מנובמבר 2026, והבדיקה לא תלויה בתאריך ההרצה
@@ -166,11 +166,83 @@ test("הגדרות: הדבקה עם רווחים, מירכאות או קידומ
   assert.deepEqual(Env.invalidKeys(bad, "3-briefs"), ["SUPABASE_URL", "USER_ID"]);
 });
 
+test("מייל: קורא רק מיילים שלא טופלו, ומסמן תווית רק אחרי הצלחה", async () => {
+  const { fetchNewMail, LABEL } = require("../automations/fetch-mail.js");
+  const log = { locks: 0, released: 0, labeled: null, searched: null, logout: 0 };
+  class FakeImap {
+    constructor(o) { log.cfg = o; }
+    async connect() {}
+    async getMailboxLock() { log.locks++; return { release: () => log.released++ }; }
+    async search(q) { log.searched = q; return [5, 6]; }
+    async fetchOne(uid) { return { source: "raw" + uid }; }
+    async messageFlagsAdd(uids, labels, o) { log.labeled = { uids, labels, o }; }
+    async logout() { log.logout++; }
+  }
+  const simpleParser = async (src) => ({ from: { text: "מרצה <a@bgu.ac.il>" }, subject: "ביטול " + src, text: "גוף", html: false, date: new Date("2026-11-20T10:00:00Z"), messageId: "<" + src + "@x>" });
+  const mail = await fetchNewMail({ address: "me@gmail.com", password: "pw" }, { ImapFlow: FakeImap, simpleParser });
+  assert.ok(log.searched.gmraw.includes("-label:" + LABEL));
+  assert.equal(log.cfg.logger, false);
+  assert.equal(mail.items.length, 2);
+  assert.deepEqual(mail.items[0].json.metadata, { "message-id": "<raw5@x>" });
+  assert.equal(mail.items[0].json.textHtml, "");
+  assert.equal(log.labeled, null); // עוד לא סומן
+  await mail.markDone();
+  assert.deepEqual(log.labeled.uids, [5, 6]);
+  assert.deepEqual(log.labeled.labels, [LABEL]);
+  assert.equal(log.released, 1);
+  // כשל: משחררים בלי לסמן
+  const again = await fetchNewMail({ address: "me@gmail.com", password: "pw" }, { ImapFlow: FakeImap, simpleParser });
+  log.labeled = null;
+  await again.close();
+  assert.equal(log.labeled, null);
+  assert.equal(log.released, 2);
+});
+
+test("מייל: שדות הפריט מתאימים למה שה-workflow מצפה", () => {
+  const { toItem } = require("../automations/fetch-mail.js");
+  const Email = require("../automations/lib/email.js");
+  const f = Email.emailFields(toItem({ from: { text: "x@bgu.ac.il" }, subject: "ביטול הרצאה", text: "מבוטלת", html: "<p>x</p>", date: new Date("2026-11-20T10:00:00Z"), messageId: "<m9>" }).json);
+  assert.equal(f.subject, "ביטול הרצאה");
+  assert.equal(f.messageId, "<m9>");
+  assert.equal(f.from, "x@bgu.ac.il");
+  assert.ok(Email.isCandidate(f));
+});
+
+test("מייל בלי מודל: ביטול עם קורס ותאריך מפורשים מזוהה, אבל לא מוחל בלי ודאות לגבי הקבוצה", () => {
+  const e = { ...mail, subject: "סטטיסטיקה – ביטול תרגול", text: "תרגול סטטיסטיקה ב-22.11 מבוטל" };
+  const r = Email.ruleExtract(e, DATA, L);
+  assert.equal(r.relevant, true);
+  assert.equal(r.items[0].course_id, "stats");
+  assert.equal(r.items[0].type, "cancelled");
+  assert.equal(r.items[0].session_type, "tutorial");
+  assert.equal(r.items[0].date, "2026-11-22");
+  const a = Email.interpret(r, e, DATA, L);
+  assert.equal(a.changes[0].status, "needs_review"); // קבוצה לא ידועה בתרגול = לאישור
+});
+
+test("מייל בלי מודל: ספק גורר לבדיקה, והודעה לא קשורה מתעלמים ממנה", () => {
+  const vague = Email.ruleExtract({ ...mail, subject: "ביטול", text: "ההרצאה הקרובה מבוטלת" }, DATA, L);
+  assert.equal(vague.items[0].course_id, "unknown");
+  assert.equal(vague.items[0].confidence, "low");
+  assert.equal(Email.interpret(vague, mail, DATA, L).inbox[0].title, "מייל לבירור – לא זוהה קורס");
+  assert.equal(Email.ruleExtract({ ...mail, subject: "משרת סטודנט", text: "מחפשים עובדים" }, DATA, L).relevant, false);
+  const moved = Email.ruleExtract({ ...mail, subject: "אלגוריתמים", text: "ההרצאה מ-24.11 הוזזה ל-26.11 בשעה 10:00, בזום" }, DATA, L).items[0];
+  assert.deepEqual([moved.type, moved.date, moved.new_date, moved.start_time, moved.location], ["moved", "2026-11-24", "2026-11-26", "10:00", "זום"]);
+});
+
+test("workflow מייל רץ גם בלי מפתח Anthropic ולא קורא ל-API", async () => {
+  const { db, calls } = await runWorkflow("2-email-changes.json", { noKey: true, inputs: [{ from: "x@bgu.ac.il", subject: "סטטיסטיקה ביטול הרצאה", textPlain: "הרצאה סטטיסטיקה ב-22.11 מבוטלת", date: "2026-11-16T16:00:00Z", metadata: { "message-id": "<m2>" } }] });
+  assert.ok(!calls.some((c) => c.url.includes("anthropic")));
+  assert.equal(db.schedule_changes.length, 1);
+  assert.ok(db.inbox.length >= 1);
+});
+
 test("workflow מתוזמן: קיים, משתמש בסודות לפי שם ובהרשאת קריאה בלבד", () => {
   const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
   for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "MOODLE_ICS_URL"]) assert.ok(y.includes("secrets." + k), k);
   assert.ok(/permissions:\s*\n\s*contents: read/.test(y));
-  assert.ok(!/ANTHROPIC/.test(y), "מפתח המודל לא נדרש בענן עד שמפעילים את המייל");
+  for (const k of ["ANTHROPIC_API_KEY", "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"]) assert.ok(y.includes("secrets." + k), k);
+  assert.ok(y.includes("imapflow@") && y.includes("mailparser@"), "ספריות המייל מקובעות לגרסה");
 });
 
 test("דופק: הצלחה מאפסת כשלונות, כשל מעלה אותם ומוסיף התראה אחת ליום", async () => {

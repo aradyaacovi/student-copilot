@@ -2,7 +2,7 @@ name: automations
 
 # GitHub מתזמן רק לפי UTC, ושעון ישראל זז פעמיים בשנה. לכן הריצה היא כל שעה,
 # ושלב ההחלטה בודק מה השעה בישראל ומה צריך לרוץ:
-#   סנכרון מודל  07,10,13,16,19,22   תדריך בוקר  07:23   תזכורות  18:23
+#   סנכרון מודל  07,10,13,16,19,22   מיילים  08,12,16,20   תדריך בוקר  07:23   תזכורות  18:23
 # ריצה שמתעכבת (קורה ב-GitHub) מושלמת בשעה או שעתיים אחרי. זה בטוח כי כל הודעה
 # נשמרת עם מפתח ייחודי, ולכן ריצה כפולה לא יוצרת הודעה כפולה.
 on:
@@ -40,6 +40,7 @@ jobs:
             list="$WHICH"
           else
             case "$H" in 7|10|13|16|19|22) list="1-moodle-sync" ;; esac
+            case "$H" in 8|12|16|20) list="$list 2-email-changes" ;; esac
             case "$H" in 7|8|9) list="$list 3-briefs" ;; esac
             case "$H" in 18|19|20) list="$list 4-reminders" ;; esac
           fi
@@ -56,6 +57,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with: { node-version: 20 }
+      - name: Install mail libraries
+        if: contains(needs.decide.outputs.list, '2-email-changes')
+        run: npm install --no-save --no-audit --no-fund imapflow@2.11.0 mailparser@3.14.4
       - name: Run
         env:
           TZ: Asia/Jerusalem
@@ -63,11 +67,17 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           USER_ID: ${{ secrets.USER_ID }}
           MOODLE_ICS_URL: ${{ secrets.MOODLE_ICS_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           LIST: ${{ needs.decide.outputs.list }}
         run: |
           # כשל באוטומציה אחת לא עוצר את האחרות, אבל הריצה כולה נכשלת ו-GitHub שולח התראה במייל.
           rc=0
           for w in $LIST; do
+            if [ "$w" = "2-email-changes" ] && [ -z "$GMAIL_APP_PASSWORD" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "::notice::מייל עדיין לא מוגדר (חסר GMAIL_APP_PASSWORD), מדלגת"; continue
+            fi
             echo "::group::$w"
             node automations/run-local.js "$w" || { echo "::error::$w נכשל"; rc=1; }
             echo "::endgroup::"

@@ -597,8 +597,8 @@
   }
   // ---------- בריאות הסנכרון ----------
   // כמה שעות בלי ריצה מוצלחת נחשבות תקינות. סנכרון מודל רץ עד 22:00 ומתחדש ב-07:00, ולכן המרווח הלילי הוא 9 שעות.
-  const SYNC_LABEL = { "1-moodle-sync": "סנכרון מודל", "3-briefs": "תדריך בוקר", "4-reminders": "תזכורות" };
-  const SYNC_MAX_HOURS = { "1-moodle-sync": 12, "3-briefs": 30, "4-reminders": 30 };
+  const SYNC_LABEL = { "1-moodle-sync": "סנכרון מודל", "2-email-changes": "סנכרון מייל", "3-briefs": "תדריך בוקר", "4-reminders": "תזכורות" };
+  const SYNC_MAX_HOURS = { "1-moodle-sync": 12, "2-email-changes": 10, "3-briefs": 30, "4-reminders": 30 };
 
   /** rows: שורות sync_state. מחזיר { status: none|ok|stale|failing, text, items } */
   function syncHealth(rows, now) {
