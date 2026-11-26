@@ -83,7 +83,7 @@ flowchart LR
     DB[(Postgres + RLS)]
     Auth[Auth<br/>magic link]
   end
-  subgraph n8n[n8n, self-hosted]
+  subgraph GH[GitHub Actions, hourly schedule]
     W1[Moodle sync]
     W2[Email changes]
     W3[Morning brief]
@@ -92,10 +92,12 @@ flowchart LR
   UI <-->|publishable key + user JWT| DB
   UI --> Auth
   W1 & W2 & W3 & W4 -->|secret key| DB
+  W1 & W2 & W3 & W4 -->|heartbeat| Sync[(sync_state)]
+  Sync -. late or failing .-> UI
   Moodle[Moodle iCal feed] --> W1
   Mail[IMAP inbox] --> W2
   W2 <-->|structured output| Claude[Claude API]
-  L -. bundled into .-> n8n
+  L -. same code runs in .-> GH
 ```
 
 The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The short version:
