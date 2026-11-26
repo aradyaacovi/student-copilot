@@ -187,8 +187,8 @@ async function scenarios() {
     await open(`${PIN}&tab=courses`);
     ok(await click("#view [data-course]"), "no course link");
     await until(() => evaluate(`!!document.querySelector("#view input[data-seen]")`), "course page");
-    const key = await evaluate(`document.querySelector("#view input[data-seen]").dataset.seen`);
-    await evaluate(`document.querySelector("#view input[data-seen]").click()`);
+    const key = await evaluate(`document.querySelector("#view input[data-seen]:not(:checked)").dataset.seen`);
+    await evaluate(`document.querySelector("#view input[data-seen]:not(:checked)").click()`);
     const s = await until(async () => { const v = await stored(); return v && v.seen && v.seen[key] ? v : null; }, "seen saved");
     ok(s.seen[key], "seen key missing");
     ok(!requests.some(isCloud), "cloud request");
