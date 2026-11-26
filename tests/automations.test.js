@@ -100,8 +100,11 @@ function runWorkflow(file, { inputs = [], claude } = {}) {
   const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ANTHROPIC_API_KEY: "test" };
   const $input = { all: () => inputs.map((json) => ({ json })) };
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const fn = new AsyncFunction("$env", "$input", node.parameters.jsCode);
-  return fn.call({ helpers: { httpRequest: http } }, $env, $input).then((out) => ({ out, db, calls, wf }));
+  // שעון קבוע: נתוני הדוגמה הם מנובמבר 2026, והבדיקה לא תלויה בתאריך ההרצה
+  const RealDate = Date;
+  class FixedDate extends RealDate { constructor(...a) { super(...(a.length ? a : [2026, 10, 19, 7, 23])); } static now() { return new RealDate(2026, 10, 19, 7, 23).getTime(); } }
+  const fn = new AsyncFunction("$env", "$input", "Date", node.parameters.jsCode);
+  return fn.call({ helpers: { httpRequest: http } }, $env, $input, FixedDate).then((out) => ({ out, db, calls, wf }));
 }
 
 test("workflow מודל רץ: כותב הגשות והתראה על חדשות", async () => {
@@ -152,6 +155,15 @@ test("הגדרות: ההודעה על חסר מציגה שמות בלבד, ומ�
   const env = Env.loadEnv("", { SUPABASE_URL: "https://x", SUPABASE_SERVICE_KEY: "secret-value", USER_ID: "u" });
   assert.deepEqual(Env.missingKeys(env, "1-moodle-sync"), ["MOODLE_ICS_URL"]);
   assert.ok(!JSON.stringify(Env.missingKeys(env, "1-moodle-sync")).includes("secret-value"));
+});
+
+test("הגדרות: הדבקה עם רווחים, מירכאות או קידומת מנוקה, וערך שגוי מדווח בשם בלבד", () => {
+  const env = Env.loadEnv("", { SUPABASE_URL: " \"https://abc.supabase.co/\"\n", SUPABASE_SERVICE_KEY: "SUPABASE_SERVICE_KEY=k1 \n", USER_ID: "12345678-1234-1234-1234-123456789012\n" });
+  assert.equal(env.SUPABASE_URL, "https://abc.supabase.co");
+  assert.equal(env.SUPABASE_SERVICE_KEY, "k1");
+  assert.deepEqual(Env.invalidKeys(env, "3-briefs"), []);
+  const bad = Env.loadEnv("", { SUPABASE_URL: "abc.supabase.co", SUPABASE_SERVICE_KEY: "secret-value", USER_ID: "short" });
+  assert.deepEqual(Env.invalidKeys(bad, "3-briefs"), ["SUPABASE_URL", "USER_ID"]);
 });
 
 test("workflow מתוזמן: קיים, משתמש בסודות לפי שם ובהרשאת קריאה בלבד", () => {
