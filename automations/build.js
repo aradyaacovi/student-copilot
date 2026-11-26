@@ -33,7 +33,7 @@ await supa.upsert("events", withUser(found.map((e) => ({ ...e, updated_at: new D
 const fresh = found.filter((e) => !known.has(e.external_id));
 const cn = (id) => { const c = ctx.base.courses.find((x) => x.id === id); return c ? c.short : "לא זוהה קורס"; };
 await postInbox(fresh.map((e) => ({ kind: "alert", title: \`חדש במודל: \${cn(e.course_id)} – \${e.title}\`, body: \`\${L.fmtLong(e.date)}\${e.time ? " " + e.time : ""}\${e.url ? "\\n" + e.url : ""}\`, dedupe_key: \`moodle-\${e.external_id}\` })));
-return [{ json: { found: found.length, new: fresh.length, unmatched: found.filter((e) => !e.course_id).map((e) => e.title) } }];`,
+return [{ json: { found: found.length, new: fresh.length, unmatched: found.filter((e) => !e.course_id).length } }];`,
 
   email: `
 const ctx = await Common.loadContext(supa, ENV.user, L);
@@ -41,7 +41,7 @@ const report = [];
 for (const item of $input.all()) {
   const e = Email.emailFields(item.json);
   if (!e.subject && !e.text) continue;
-  if (!Email.isCandidate(e)) { report.push({ subject: e.subject, skipped: "לא רלוונטי" }); continue; }
+  if (!Email.isCandidate(e)) { report.push({ n: report.length + 1, skipped: "לא רלוונטי" }); continue; }
   let result, reason;
   if ($env.ANTHROPIC_API_KEY) {
     let res;
@@ -49,13 +49,13 @@ for (const item of $input.all()) {
       res = await http({ method: "POST", url: "https://api.anthropic.com/v1/messages", headers: Email.ANTHROPIC_HEADERS($env.ANTHROPIC_API_KEY), body: Email.buildRequest(e, ctx.data, L), json: true, timeout: 180000 });
     } catch (err) {
       await postInbox([{ kind: "alert", title: "לא הצלחתי לנתח מייל", body: \`\${e.subject}\\n\${err.message}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]);
-      report.push({ subject: e.subject, error: err.message }); continue;
+      report.push({ n: report.length + 1, error: err.message }); continue;
     }
     ({ result, reason } = Email.readResponse(res));
   } else {
     result = Email.ruleExtract(e, ctx.data, L); // בלי מפתח: חילוץ לפי כללים, בלי מודל ובלי עלות
   }
-  if (!result) { await postInbox([{ kind: "alert", title: "מייל לבדיקה ידנית", body: \`\${e.subject}\\n\${reason}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]); report.push({ subject: e.subject, error: reason }); continue; }
+  if (!result) { await postInbox([{ kind: "alert", title: "מייל לבדיקה ידנית", body: \`\${e.subject}\\n\${reason}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]); report.push({ n: report.length + 1, error: reason }); continue; }
   const acts = Email.interpret(result, e, ctx.data, L);
   await supa.upsert("events", withUser(acts.events), "user_id,source,external_id", "merge");
   for (const ch of acts.changes) {
@@ -64,7 +64,7 @@ for (const item of $input.all()) {
     if (ins.length) await postInbox([{ ..._inbox, ref_id: ins[0].id }]);
   }
   await postInbox(acts.inbox);
-  report.push({ subject: e.subject, relevant: result.relevant, changes: acts.changes.length, events: acts.events.length });
+  report.push({ n: report.length + 1, relevant: result.relevant, changes: acts.changes.length, events: acts.events.length });
 }
 return report.length ? report.map((r) => ({ json: r })) : [{ json: { empty: true } }];`,
 
