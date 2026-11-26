@@ -421,6 +421,16 @@
     return Math.max(0, Math.min(cap, Math.round((Math.max(0, free) / 60) * 2) / 2));
   }
 
+  /** תווית דחיפות קצרה ובולטת לפי הימים שנשארו: באיחור, היום, מחר, עוד יומיים. אחרת null. */
+  function dueBadge(daysLeft) {
+    if (daysLeft === null || daysLeft === undefined || Number.isNaN(daysLeft)) return null;
+    if (daysLeft < 0) return { text: daysLeft === -1 ? "באיחור של יום" : `באיחור של ${-daysLeft} ימים`, cls: "now" };
+    if (daysLeft === 0) return { text: "היום", cls: "now" };
+    if (daysLeft === 1) return { text: "מחר", cls: "soon" };
+    if (daysLeft === 2) return { text: "עוד יומיים", cls: "soon" };
+    return null;
+  }
+
   // ---------- מדד: כמה מהתוכנית היומית בוצעה ----------
   /**
    * log: { "YYYY-MM-DD": [מזהי משימות שהיו בתוכנית של אותו בוקר] }.
@@ -701,7 +711,7 @@
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
     deadlineId, nextSessionAfter, applyRemote,
     estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
-    syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes, adherence,
+    syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes, adherence, dueBadge,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;
