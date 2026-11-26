@@ -173,6 +173,43 @@ test("workflow מתוזמן: קיים, משתמש בסודות לפי שם וב�
   assert.ok(!/ANTHROPIC/.test(y), "מפתח המודל לא נדרש בענן עד שמפעילים את המייל");
 });
 
+test("דופק: הצלחה מאפסת כשלונות, כשל מעלה אותם ומוסיף התראה אחת ליום", async () => {
+  const { makeSupa, recordRun } = require("../automations/lib/common.js");
+  const calls = [];
+  const db = { failures: 2 };
+  const http = async (o) => {
+    calls.push(o);
+    if (o.method === "GET") return [{ failures: db.failures }];
+    return [];
+  };
+  const supa = makeSupa(http, "https://x.supabase.co/", "k");
+  const t = new Date("2026-11-26T08:00:00Z");
+  assert.equal(await recordRun(supa, "u1", "1-moodle-sync", null, t, { "1-moodle-sync": "סנכרון מודל" }), true);
+  let post = calls.find((c) => c.method === "POST" && c.url.includes("sync_state"));
+  assert.equal(post.body[0].failures, 0);
+  assert.equal(post.body[0].last_success, t.toISOString());
+  assert.ok(post.url.includes("on_conflict=user_id,source"));
+  assert.ok(!calls.some((c) => c.url.includes("inbox")), "הצלחה לא יוצרת התראה");
+
+  calls.length = 0;
+  await recordRun(supa, "u1", "1-moodle-sync", "HTTP 500", t, { "1-moodle-sync": "סנכרון מודל" });
+  post = calls.find((c) => c.method === "POST" && c.url.includes("sync_state"));
+  assert.equal(post.body[0].failures, 3);
+  assert.ok(!("last_success" in post.body[0]), "כשל לא נוגע בהצלחה האחרונה");
+  const alert = calls.find((c) => c.url.includes("inbox"));
+  assert.equal(alert.body[0].dedupe_key, "syncfail|1-moodle-sync|2026-11-26");
+  assert.equal(alert.body[0].kind, "alert");
+});
+test("דופק: כשל ברישום עצמו לא זורק ולא מסתיר את השגיאה המקורית", async () => {
+  const { recordRun } = require("../automations/lib/common.js");
+  const supa = { select: async () => { throw new Error("down"); }, upsert: async () => { throw new Error("down"); } };
+  assert.equal(await recordRun(supa, "u1", "3-briefs", "boom", new Date(), {}), false);
+});
+test("workflow מתוזמן: כשל באוטומציה אחת לא עוצר את האחרות והריצה נכשלת", () => {
+  const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
+  assert.ok(/\|\| \{[^}]*rc=1/.test(y) && y.includes("exit $rc"));
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); passed++; console.log("✓", name); }

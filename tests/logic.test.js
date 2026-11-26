@@ -144,4 +144,20 @@ test("busyMinutes: מאחד קטעים חופפים וסמוכים וגוזר ל
   assert.equal(L.busyMinutes([[0, 600]], 100, 200), 100);
   assert.equal(L.busyMinutes([], 0, 600), 0);
 });
+test("syncHealth: תקין, ישן, נכשל, וללא נתונים", () => {
+  const now = new Date("2026-11-26T12:00:00Z");
+  const ago = (h) => new Date(now - h * 3600000).toISOString();
+  assert.equal(L.syncHealth([], now).status, "none");
+  assert.equal(L.syncHealth(null, now).status, "none");
+  assert.equal(L.syncHealth([{ source: "1-moodle-sync", last_success: ago(3), failures: 0 }], now).status, "ok");
+  // הפער הלילי הרגיל של סנכרון מודל (9 שעות) לא נחשב תקלה
+  assert.equal(L.syncHealth([{ source: "1-moodle-sync", last_success: ago(10), failures: 0 }], now).status, "ok");
+  const stale = L.syncHealth([{ source: "1-moodle-sync", last_success: ago(14), failures: 0 }], now);
+  assert.equal(stale.status, "stale");
+  assert.ok(stale.text.includes("סנכרון מודל") && stale.text.includes("14"));
+  const failing = L.syncHealth([{ source: "3-briefs", last_success: ago(2), failures: 2, last_error: "x" }, { source: "1-moodle-sync", last_success: ago(30), failures: 0 }], now);
+  assert.equal(failing.status, "failing");
+  assert.equal(L.syncHealth([{ source: "unknown", last_success: ago(500), failures: 5 }], now).status, "none");
+  assert.ok(L.syncHealth([{ source: "4-reminders", last_success: null, failures: 0 }], now).text.includes("אף פעם"));
+});
 console.log(`${passed} בדיקות עברו בסך הכול`);

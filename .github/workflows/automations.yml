@@ -65,8 +65,11 @@ jobs:
           MOODLE_ICS_URL: ${{ secrets.MOODLE_ICS_URL }}
           LIST: ${{ needs.decide.outputs.list }}
         run: |
+          # כשל באוטומציה אחת לא עוצר את האחרות, אבל הריצה כולה נכשלת ו-GitHub שולח התראה במייל.
+          rc=0
           for w in $LIST; do
             echo "::group::$w"
-            node automations/run-local.js "$w"
+            node automations/run-local.js "$w" || { echo "::error::$w נכשל"; rc=1; }
             echo "::endgroup::"
           done
+          exit $rc

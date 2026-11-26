@@ -69,11 +69,22 @@ create table if not exists public.inbox (
   unique (user_id, dedupe_key)
 );
 
+-- 6. דופק הסנכרון: מתי כל אוטומציה רצה בהצלחה לאחרונה, כדי שהאפליקציה תוכל להזהיר כשהיא שותקת
+create table if not exists public.sync_state (
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  source text not null,        -- שם ה-workflow, למשל 1-moodle-sync
+  last_attempt timestamptz,
+  last_success timestamptz,
+  last_error text,
+  failures int not null default 0,
+  primary key (user_id, source)
+);
+
 -- RLS: כל משתמש רואה ומשנה רק את השורות שלו
 do $$
 declare t text;
 begin
-  foreach t in array array['semester_data', 'user_state', 'events', 'schedule_changes', 'inbox'] loop
+  foreach t in array array['semester_data', 'user_state', 'events', 'schedule_changes', 'inbox', 'sync_state'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists own_rows on public.%I', t);
     execute format('create policy own_rows on public.%I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);

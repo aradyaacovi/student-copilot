@@ -25,7 +25,7 @@
   let source = DEMO ? "sample" : state.dataOverride ? "import" : window.SEMESTER_DATA ? "mine" : "sample";
   let baseData = DEMO ? window.SAMPLE_DATA : state.dataOverride || window.SEMESTER_DATA || window.SAMPLE_DATA;
   let data, courses, byId, previous;
-  const remote = { events: [], changes: [], inbox: [] };
+  const remote = { events: [], changes: [], inbox: [], sync: [] };
   function setData() {
     data = L.applyRemote(baseData, remote);
     courses = data.courses;
@@ -123,12 +123,13 @@
 
   async function cloudPull() {
     const c = cloud.client;
-    const [sd, us, ev, ch, ib] = await Promise.all([
+    const [sd, us, ev, ch, ib, sy] = await Promise.all([
       c.from("semester_data").select("data,updated_at").maybeSingle(),
       c.from("user_state").select("state,updated_at").maybeSingle(),
       c.from("events").select("*").order("date"),
       c.from("schedule_changes").select("*").neq("status", "rejected"),
       c.from("inbox").select("*").order("created_at", { ascending: false }).limit(40),
+      c.from("sync_state").select("*"), // אם הטבלה עוד לא נוצרה: מתעלמים בשקט ולא מציגים חיווי
     ]);
     const err = [sd, us, ev, ch, ib].find((r) => r.error);
     if (err) { cloud.status = "error"; cloud.error = err.error.message; return; }
@@ -139,6 +140,7 @@
     remote.changes = (ch.data || []).filter((x) => x.status === "applied");
     remote.review = (ch.data || []).filter((x) => x.status === "needs_review");
     remote.inbox = ib.data || [];
+    remote.sync = sy.error ? [] : sy.data || [];
     setData();
   }
 
@@ -185,9 +187,11 @@
     const items = remote.inbox.slice(0, 8);
     const unread = remote.inbox.filter((m) => !m.read).length;
     const reviewIds = new Set((remote.review || []).map((r) => r.id));
+    const health = L.syncHealth(remote.sync, now);
     return `<div class="card span inbox">
       <div class="row"><h3>📬 עדכונים מהאוטומציות ${unread ? `<span class="badge now">${unread} חדשים</span>` : ""}</h3><span class="spacer"></span>
         <button class="link small" data-cloud="refresh">רענון</button> ${unread ? `<button class="link small" data-cloud="readAll">סימון הכול כנקרא</button>` : ""}</div>
+      ${health.status === "stale" || health.status === "failing" ? `<div class="warn small">⚠️ ${esc(health.text)}</div>` : ""}
       ${items.length ? items.map((m) => `<details class="msg ${m.read ? "" : "unread"}" ${!m.read && (m.kind === "brief" || m.kind === "review") ? "open" : ""}>
         <summary>${inboxIcon[m.kind] || "•"} <b>${esc(m.title)}</b> <span class="muted small">${new Date(m.created_at).toLocaleString("he-IL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</span></summary>
         <div class="msg-body">${esc(m.body)}</div>
