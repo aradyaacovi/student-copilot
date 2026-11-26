@@ -22,7 +22,7 @@ data, or copy `data/sample-semester.js` to `data/my-semester.js` (renaming
 npm test
 ```
 
-All 76 tests must pass (the UI smoke tests need Chrome or Edge, or `CHROME_PATH`). They run in CI on every push and pull request.
+All 78 tests must pass (the UI smoke tests need Chrome or Edge, or `CHROME_PATH`). They run in CI on every push and pull request.
 
 If you change anything under `automations/lib/`, regenerate the n8n workflow files
 so the committed JSON matches the source:

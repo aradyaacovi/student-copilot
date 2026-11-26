@@ -45,11 +45,12 @@ const CANDIDATES = [
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, what, ms = 15000) {
   const end = Date.now() + ms;
+  let last = "";
   for (;;) {
     let v;
-    try { v = await fn(); } catch { /* page still loading */ }
+    try { v = await fn(); } catch (e) { last = e.message; /* page still loading */ }
     if (v) return v;
-    if (Date.now() > end) throw new Error("timeout: " + what);
+    if (Date.now() > end) throw new Error("timeout: " + what + (last ? " (last error: " + last + ")" : ""));
     await wait(50);
   }
 }
@@ -115,9 +116,25 @@ async function open(query, { width = 1280, height = 900, mobile = false, seed, c
   await until(() => evaluate(`!!document.querySelector("#view") && document.querySelector("#view").innerHTML.length > 0`), "app render");
 }
 
+/** A failing test leaves a screenshot in test-results/ (CI uploads it as an artifact). */
+async function shot(name) {
+  try {
+    const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
+    const dir = path.join(ROOT, "test-results");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "ui-" + (results.length) + ".png");
+    fs.writeFileSync(file, Buffer.from(data, "base64"));
+    console.log("      screenshot:", path.relative(ROOT, file));
+  } catch (e) { console.log("      (no screenshot: " + e.message + ")"); }
+}
+
 async function test(name, fn) {
   try { await fn(); results.push({ name, pass: true }); console.log("  ✓", name); }
-  catch (e) { results.push({ name, pass: false, err: e.message }); console.log("  ✗", name, "\n     ", e.message); }
+  catch (e) {
+    results.push({ name, pass: false, err: e.message });
+    console.log("  ✗", name, "\n     ", e.message);
+    await shot(name);
+  }
 }
 
 const isCloud = (u) => /\.supabase\.co|smoke-test\.invalid/.test(u);
@@ -225,6 +242,25 @@ async function scenarios() {
     noErrors();
   });
 
+  await test("grades: a typed grade is saved and the averages render", async () => {
+    await open(`${PIN}&tab=grades`);
+    ok(await evaluate(`document.querySelectorAll("#view .kpi .v").length >= 2`), "averages missing");
+    ok(await evaluate(`(() => { const i = document.querySelector("#view input[data-grade]"); if (!i) return false; i.value = "90"; i.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`), "no grade input");
+    const s = await until(async () => { const v = await stored(); return v && Object.keys(v.grades || {}).length ? v : null; }, "grade saved");
+    ok(JSON.stringify(s.grades).includes("90"), "grade value not saved");
+    noErrors();
+  });
+
+  await test("settings: opens and a changed setting is saved", async () => {
+    await open(`${PIN}&tab=settings`);
+    ok(await evaluate(`document.getElementById("pageTitle").textContent.length > 0 && document.getElementById("view").innerHTML.length > 200`), "settings view empty");
+    await click('#tabs [data-tab="today"]');
+    ok(await evaluate(`(() => { const i = document.querySelector("[data-setting='dailyHours']"); if (!i) return false; i.value = "6"; i.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`), "no daily-hours input");
+    const s = await until(async () => { const v = await stored(); return v && v.dailyHours === 6 ? v : null; }, "setting saved");
+    ok(s.dailyHours === 6, "dailyHours not saved");
+    noErrors();
+  });
+
   await test("no horizontal scroll at 375px on any tab", async () => {
     for (const t of ["today", "schedule", "courses", "grades", "settings"]) {
       await open(`demo=1&${PIN}&tab=${t}`, { width: 375, height: 812, mobile: true });
@@ -250,14 +286,16 @@ async function main() {
   base = `http://127.0.0.1:${sport}`;
   const port = await freePort();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-"));
-  let proc, stderr = "";
+  let proc, stderr = "", attempt = 0;
   const launch = () => {
+    attempt++;
     const extra = process.platform === "linux" ? ["--no-sandbox", "--disable-dev-shm-usage"] : []; // CI containers
     proc = spawn(browser, [
-      "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...extra,
+      attempt > 1 ? "--headless" : "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...extra,
       `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank",
-    ], { stdio: ["ignore", "ignore", "pipe"] });
-    proc.stderr.on("data", (d) => { stderr = (stderr + d).slice(-1500); });
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    proc.on("exit", (code, sig) => { stderr += ` [browser exited: ${code ?? sig}]`; });
+    for (const o of [proc.stdout, proc.stderr]) o.on("data", (d) => { stderr = (stderr + d).slice(-1500); });
   };
   launch();
   const cleanup = async () => {

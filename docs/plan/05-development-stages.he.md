@@ -36,7 +36,7 @@
 | הגנה על `main` (ruleset `protect-main`): PR חובה, CI (`test`) חובה, בלי דחיפה ישירה, מחיקה או דחיפה בכוח, בלי חריגה למנהלת | בוצע |
 | Secret scanning ו-push protection | בוצע (היו פעילים, נבדק ב-API) |
 | ניקוי ענפים ישנים | בוצע: נמחקו 9 ענפי PR ממוזגים. נשארו ענפים של PR פתוח ושני ענפים של PR שנסגר בלי מיזוג (`docs/development-plan`, `feat/sync-health`) |
-| עדכון ספירת הבדיקות ב-README | בוצע: 76 (28 לוגיקה, 38 אוטומציות, 10 ממשק) |
+| עדכון ספירת הבדיקות ב-README | בוצע: 78 (28 לוגיקה, 38 אוטומציות, 12 ממשק) |
 | בדיקות עשן לממשק בדמו (`tests/ui.smoke.test.js`, דפדפן headless בלי תלויות, ב-CI) | בוצע |
 | לוח פרויקט ב-GitHub Projects | בוצע: Student Copilot roadmap, כרטיסי טיוטה. סדר העמודות צריך תיקון: Next אחרי In Progress ולא לפניה |
 | `CHANGELOG.md` | בוצע |

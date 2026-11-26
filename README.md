@@ -19,7 +19,7 @@ Built for Hebrew (RTL) first. No framework, no build step.
 | **Approach** | One prioritization function ranks every task by effort and slack, so the app shows one "now" task and a plan sized to today's free hours. |
 | **Stack** | Vanilla JavaScript, Supabase (Postgres, row-level security), n8n, Claude API for email interpretation, GitHub Actions |
 | **My part** | Designed and directed the product and its rules, used it daily across a seven-course semester; Claude Code implemented. See [How it was built](#how-it-was-built). |
-| **Proof** | 76 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
+| **Proof** | 78 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
 
 ![Today view](docs/screenshots/today.png)
 
@@ -134,9 +134,9 @@ Safety rules for the email workflow: email content is treated as data, never as 
 npm test
 ```
 
-76 tests (28 logic, 38 automations, 10 UI smoke), zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
+78 tests (28 logic, 38 automations, 12 UI smoke), zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
 
-The UI smoke tests (`npm run test:ui`, about 10 seconds) open the demo in a headless Chrome or Edge over the DevTools protocol, with the date and time pinned (`?today=` and `?now=`). They check: no console errors, one task plus today's plan, tab switching, that "done" and "seen" are saved in localStorage and never reach the cloud, that an empty semester does not break the page, and that nothing scrolls sideways at 375px. Personal data, cloud settings and the network are mocked, so the result is the same on every machine. Set `CHROME_PATH` if no browser is found; locally the test skips without one, in CI it fails.
+The UI smoke tests (`npm run test:ui`, about 10 seconds) open the demo in a headless Chrome or Edge over the DevTools protocol, with the date and time pinned (`?today=` and `?now=`). They check: no console errors, one task plus today's plan, tab switching, that "done" and "seen" are saved in localStorage and never reach the cloud, that an empty semester does not break the page, that grades and settings are saved, and that nothing scrolls sideways at 375px. A failed test saves a screenshot to `test-results/` (CI uploads it as an artifact). Personal data, cloud settings and the network are mocked, so the result is the same on every machine. Set `CHROME_PATH` if no browser is found; locally the test skips without one, in CI it fails.
 
 ## Run it
 
