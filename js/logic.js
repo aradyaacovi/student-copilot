@@ -703,7 +703,19 @@
     return h;
   }
 
+  // ---------- safe rendering (shared by the app, tested here) ----------
+  // Text that came from outside (email, Moodle, the model) is escaped before it goes into innerHTML.
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  }
+  // A link is allowed only if it is http(s) or mailto. javascript: and data: become an empty string.
+  function safeUrl(u) {
+    const t = String(u == null ? "" : u).trim();
+    return /^(https?:\/\/|mailto:)/i.test(t) ? t : "";
+  }
+
   const api = {
+    escapeHtml, safeUrl,
     DAY_NAMES, SESSION_LABEL, TIERS,
     parseDate, iso, addDays, daysUntil, fmt, fmtLong, startOfWeek, withTime,
     sessionOccurrences, coursePace, paceStatus, seenKey, sessionsOnDate, weekSessions,

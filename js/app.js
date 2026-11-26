@@ -50,10 +50,10 @@
   let summaryCourse = courses[0] && courses[0].id;
 
   // ---------- helpers ----------
-  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const esc = L.escapeHtml;
   const cname = (id) => (byId[id] ? byId[id].short || byId[id].name : "");
   const ccolor = (id) => (byId[id] ? byId[id].color : "#94a3b8");
-  const chip = (id) => (id ? `<button class="chip" data-course="${id}" style="--c:${ccolor(id)}" title="לדף הקורס">${esc(cname(id))}</button>` : "");
+  const chip = (id) => (id ? `<button class="chip" data-course="${esc(id)}" style="--c:${esc(ccolor(id))}" title="לדף הקורס">${esc(cname(id))}</button>` : "");
   let toastTimer;
   // a reversible action says so: the toast carries an undo button (no confirm dialogs)
   let undoSnap = null;
@@ -592,7 +592,7 @@
           ${(c.staff || []).length ? `<div class="small">👥 ${c.staff.map(esc).join(" · ")}</div>` : ""}
           <div class="small">🕑 ${(c.sessions || []).map((s) => `${L.SESSION_LABEL[s.type]} ${L.DAY_NAMES[s.day]} ${s.start}–${s.end} (${esc(s.location || "")})`).join(" · ")}</div>
           ${(c.notes || []).length ? `<ul class="small">${c.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
-          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
+          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(L.safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
         </div>`).join("")}</div>`;
   }
 
@@ -611,7 +611,7 @@
             <div class="summary-entry" style="--c:${c.color}">
               <div class="row"><b>${esc(s.session || "")}${s.title ? " – " + esc(s.title) : ""}</b>
                 <span class="muted small">${s.date ? L.fmt(s.date) : ""}</span><span class="spacer"></span>
-                ${s.link ? `<a class="small" href="${esc(s.link)}" target="_blank" rel="noopener">לסיכום המלא</a>` : ""}
+                ${s.link && L.safeUrl(s.link) ? `<a class="small" href="${esc(L.safeUrl(s.link))}" target="_blank" rel="noopener">לסיכום המלא</a>` : ""}
                 ${s.fromData ? "" : `<button class="link small" data-delnote="${i - (c.summaries || []).length}">מחיקה</button>`}</div>
               <ul>${(s.points || []).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
             </div>`).join("") : `<div class="empty">עוד אין סיכומים בקורס הזה.</div>`}
@@ -661,11 +661,11 @@
           <div class="small">${c.components.map((k) => `${esc(k.name)} <b>${k.weight}%</b>`).join(" · ") || "מרכיבי הציון לא ידועים"}</div>
           <ul class="small">${(c.conditions || []).concat(c.notes || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
           ${open.length ? `<div class="small warn">❓ ${open.map((o) => esc(o.text)).join(" · ")}</div>` : ""}
-          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
+          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(L.safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
         </div>
         <div class="card"><h3>📖 הסיכום המצטבר</h3>
           ${notes.length ? notes.map((s) => `<div class="summary-entry" style="--c:${c.color}"><b>${esc(s.session || "")}${s.title ? " – " + esc(s.title) : ""}</b>
-            ${s.link ? ` <a class="small" href="${esc(s.link)}" target="_blank" rel="noopener">לסיכום</a>` : ""}<ul>${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`).join("") : `<div class="empty">עוד אין סיכומים.</div>`}
+            ${s.link && L.safeUrl(s.link) ? ` <a class="small" href="${esc(L.safeUrl(s.link))}" target="_blank" rel="noopener">לסיכום</a>` : ""}<ul>${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`).join("") : `<div class="empty">עוד אין סיכומים.</div>`}
           <button class="link" data-sumcourse="${c.id}" data-tab="summaries">להוסיף סיכום ←</button>
         </div>
       </div>`;

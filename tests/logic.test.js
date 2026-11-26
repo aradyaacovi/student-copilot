@@ -220,4 +220,12 @@ test("syncHealth: תקין, ישן, נכשל, וללא נתונים", () => {
   assert.equal(L.syncHealth([{ source: "unknown", last_success: ago(500), failures: 5 }], now).status, "none");
   assert.ok(L.syncHealth([{ source: "4-reminders", last_success: null, failures: 0 }], now).text.includes("אף פעם"));
 });
+test("escapeHtml and safeUrl block markup and javascript: links", () => {
+  assert.equal(L.escapeHtml(`<img src=x onerror="a()">'&`), "&lt;img src=x onerror=&quot;a()&quot;&gt;&#39;&amp;");
+  assert.equal(L.escapeHtml(null), "");
+  assert.equal(L.safeUrl("https://moodle.bgu.ac.il/x?a=1"), "https://moodle.bgu.ac.il/x?a=1");
+  assert.equal(L.safeUrl("  HTTP://a.b"), "HTTP://a.b");
+  assert.equal(L.safeUrl("mailto:a@b.c"), "mailto:a@b.c");
+  for (const bad of ["javascript:alert(1)", " JaVaScRiPt:alert(1)", "data:text/html,<script>", "//evil.com", "vbscript:x", "", null, undefined]) assert.equal(L.safeUrl(bad), "");
+});
 console.log(`${passed} בדיקות עברו בסך הכול`);
