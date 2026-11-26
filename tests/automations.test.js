@@ -439,6 +439,17 @@ test("workflow מתוזמן: כל job מקבל רק את הסודות שהוא �
 });
 
 
+test("workflows: כל action מקובע ל-SHA מלא עם הערת גרסה (ו-Dependabot מעדכן אותן)", () => {
+  const dir = path.join(__dirname, "../.github/workflows");
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".yml"))) {
+    const uses = fs.readFileSync(path.join(dir, f), "utf8").split("\n").filter((l) => /^\s*(- )?uses:/.test(l));
+    assert.ok(uses.length, f);
+    for (const l of uses) assert.ok(/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/.test(l), f + ": " + l.trim());
+  }
+  assert.ok(/package-ecosystem: github-actions/.test(fs.readFileSync(path.join(__dirname, "../.github/dependabot.yml"), "utf8")));
+  assert.ok(/^permissions:\s*\n\s+contents: read/m.test(fs.readFileSync(path.join(dir, "test.yml"), "utf8")), "test.yml: הרשאת קריאה בלבד");
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); passed++; console.log("✓", name); }

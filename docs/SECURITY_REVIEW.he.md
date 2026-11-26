@@ -58,7 +58,7 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - `connect-src` חייב לכלול את דומיין Supabase, כולל `wss:` אם יש Realtime (כרגע אין שימוש בו). עם דומיין מותאם אישית צריך להוסיף אותו.
 - לבדוק בדפדפן אחרי ההוספה: כניסה, שמירה לענן, גופנים, הורדת גיבוי (blob).
 
-### 6. קיבוע Actions וברירת מחדל של הרשאות
+### 6. קיבוע Actions וברירת מחדל של הרשאות (תוקן)
 כל ה-Actions מקובעות לתג ראשי (`@v7`, `@v6`, `@v5`), תג שאפשר להזיז. `test.yml` בלי בלוק `permissions`, ולכן ההרשאה היא ברירת המחדל של הריפו.
 **המלצה:** להוסיף `permissions: contents: read` ל-`test.yml`, ולקבע ל-SHA מלא עם Dependabot לעדכונים (`github-actions`). ב-`automations.yml` ו-`pages.yml` ההרשאות כבר מינימליות (`contents: read`, ו-`pages`/`id-token` רק בפרסום).
 
@@ -105,3 +105,4 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - `sw.js`: `VERSION` עלה ל-`v15`, כי קבצי ליבה השתנו.
 - ממצא 4 (א): `automations.yml`: ה-job `run` פוצל לחמישה jobs (`moodle`, `email`, `briefs`, `reminders`, `calendar`), כל אחד עם הסודות שלו בלבד. התקנת `imapflow` ו-`mailparser` רק ב-job המייל, בשלב בלי סודות. job המייל מקבל גם `ANTHROPIC_API_KEY`, כי בלעדיו המייל יורד לחילוץ לפי כללים (שינוי התנהגות). דילוג בריצה מתוזמנת בלי סיסמת Gmail נשמר, וכן תרגיל הכשל (`drill`). בדיקות חדשות ב-`tests/automations.test.js` נועלות את הסודות לכל job, את ההתקנה במייל בלבד, ואת היעדר הדפסת סודות.
   נשאר: (ב) `package-lock.json` עם `npm ci --ignore-scripts` לתלויות העקיפות של המייל, ו-(ג) מפתח Supabase מצומצם במקום `service_role`. שניהם לא בהיקף הזה.
+- ממצא 6: כל ה-Actions ב-`.github/workflows/*.yml` מקובעות ל-SHA מלא עם הערת גרסה מדויקת (`checkout` v7.0.1, `setup-node` v7.1.0, `deploy-pages` v5.0.1, `configure-pages` v6.0.0, `upload-pages-artifact` v5.0.0, `upload-artifact` v4.6.2). Dependabot (`github-actions`, שבועי) ממשיך לעדכן אותן ומעדכן גם את ההערה. ל-`test.yml` נוסף `permissions: contents: read`. בדיקה חדשה ב-`tests/automations.test.js` נכשלת אם נוספת action בלי SHA.
