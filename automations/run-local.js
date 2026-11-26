@@ -38,13 +38,22 @@ const http = async (o) => {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const supa = makeSupa(http, env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
   const heartbeat = (err) => recordRun(supa, env.USER_ID, what, err, new Date(), L.SYNC_LABEL);
+  // המייל נקרא מג׳ימייל (IMAP). הספריות מותקנות בענן בלבד, ומעבירים אותן פנימה כדי שהבדיקות ירוצו בלי רשת.
+  let mail = null;
+  if (what === "2-email-changes") {
+    const { fetchNewMail } = require("./fetch-mail.js");
+    mail = await fetchNewMail({ address: env.GMAIL_ADDRESS, password: env.GMAIL_APP_PASSWORD }, { ImapFlow: require("imapflow").ImapFlow, simpleParser: require("mailparser").simpleParser });
+  }
+  const inputs = mail ? mail.items : [];
   let out;
   try {
-    out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => [] });
+    out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => inputs });
   } catch (e) {
+    if (mail) await mail.close();
     await heartbeat(e.message); // הדופק נרשם גם בכשל, כדי שהאפליקציה תדע ולא תשתוק
     throw e;
   }
+  if (mail) await mail.markDone();
   await heartbeat(null);
   console.log(wf.name, "→", JSON.stringify(out.map((o) => o.json)));
 })().catch((e) => { const why = e.cause && (e.cause.code || e.cause.name); // קוד שגיאה בלבד (למשל ENOTFOUND), בלי כתובות וערכים

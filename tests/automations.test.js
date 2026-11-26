@@ -166,11 +166,54 @@ test("הגדרות: הדבקה עם רווחים, מירכאות או קידומ
   assert.deepEqual(Env.invalidKeys(bad, "3-briefs"), ["SUPABASE_URL", "USER_ID"]);
 });
 
+test("מייל: קורא רק מיילים שלא טופלו, ומסמן תווית רק אחרי הצלחה", async () => {
+  const { fetchNewMail, LABEL } = require("../automations/fetch-mail.js");
+  const log = { locks: 0, released: 0, labeled: null, searched: null, logout: 0 };
+  class FakeImap {
+    constructor(o) { log.cfg = o; }
+    async connect() {}
+    async getMailboxLock() { log.locks++; return { release: () => log.released++ }; }
+    async search(q) { log.searched = q; return [5, 6]; }
+    async fetchOne(uid) { return { source: "raw" + uid }; }
+    async messageFlagsAdd(uids, labels, o) { log.labeled = { uids, labels, o }; }
+    async logout() { log.logout++; }
+  }
+  const simpleParser = async (src) => ({ from: { text: "מרצה <a@bgu.ac.il>" }, subject: "ביטול " + src, text: "גוף", html: false, date: new Date("2026-11-20T10:00:00Z"), messageId: "<" + src + "@x>" });
+  const mail = await fetchNewMail({ address: "me@gmail.com", password: "pw" }, { ImapFlow: FakeImap, simpleParser });
+  assert.ok(log.searched.gmraw.includes("-label:" + LABEL));
+  assert.equal(log.cfg.logger, false);
+  assert.equal(mail.items.length, 2);
+  assert.deepEqual(mail.items[0].json.metadata, { "message-id": "<raw5@x>" });
+  assert.equal(mail.items[0].json.textHtml, "");
+  assert.equal(log.labeled, null); // עוד לא סומן
+  await mail.markDone();
+  assert.deepEqual(log.labeled.uids, [5, 6]);
+  assert.deepEqual(log.labeled.labels, [LABEL]);
+  assert.equal(log.released, 1);
+  // כשל: משחררים בלי לסמן
+  const again = await fetchNewMail({ address: "me@gmail.com", password: "pw" }, { ImapFlow: FakeImap, simpleParser });
+  log.labeled = null;
+  await again.close();
+  assert.equal(log.labeled, null);
+  assert.equal(log.released, 2);
+});
+
+test("מייל: שדות הפריט מתאימים למה שה-workflow מצפה", () => {
+  const { toItem } = require("../automations/fetch-mail.js");
+  const Email = require("../automations/lib/email.js");
+  const f = Email.emailFields(toItem({ from: { text: "x@bgu.ac.il" }, subject: "ביטול הרצאה", text: "מבוטלת", html: "<p>x</p>", date: new Date("2026-11-20T10:00:00Z"), messageId: "<m9>" }).json);
+  assert.equal(f.subject, "ביטול הרצאה");
+  assert.equal(f.messageId, "<m9>");
+  assert.equal(f.from, "x@bgu.ac.il");
+  assert.ok(Email.isCandidate(f));
+});
+
 test("workflow מתוזמן: קיים, משתמש בסודות לפי שם ובהרשאת קריאה בלבד", () => {
   const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
   for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "MOODLE_ICS_URL"]) assert.ok(y.includes("secrets." + k), k);
   assert.ok(/permissions:\s*\n\s*contents: read/.test(y));
-  assert.ok(!/ANTHROPIC/.test(y), "מפתח המודל לא נדרש בענן עד שמפעילים את המייל");
+  for (const k of ["ANTHROPIC_API_KEY", "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"]) assert.ok(y.includes("secrets." + k), k);
+  assert.ok(y.includes("imapflow@") && y.includes("mailparser@"), "ספריות המייל מקובעות לגרסה");
 });
 
 test("דופק: הצלחה מאפסת כשלונות, כשל מעלה אותם ומוסיף התראה אחת ליום", async () => {
