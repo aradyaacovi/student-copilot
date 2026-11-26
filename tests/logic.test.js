@@ -179,6 +179,15 @@ test("יומן: השעות הפנויות יורדות לפי האירועים, 
   const other = L.calendarBusyForDay([ev("2026-11-26T12:00:00Z", "2026-11-26T14:00:00Z")], "2026-11-26"); // 14:00 עד 16:00
   assert.equal(L.freeHoursToday([], now, "19:30", 12) - L.freeHoursToday([], now, "19:30", 12, other), 2);
 });
+test("adherence: סופרת רק ימים שעברו, בחלון, ומשימה שהושלמה אחר כך נחשבת", () => {
+  const now = new Date(2026, 10, 26, 9, 0);
+  const log = { "2026-11-26": ["x", "y"], "2026-11-25": ["a", "b", "c", "d"], "2026-11-24": ["e"], "2026-11-20": [], "2026-10-01": ["old"] };
+  const done = new Set(["a", "b", "c", "e", "x"]);
+  const r = L.adherence(log, (id) => done.has(id), now, 14);
+  assert.deepEqual(r, { days: 2, planned: 5, done: 4, pct: 80 }); // היום, יום ריק וחודש ישן לא נספרים
+  assert.deepEqual(L.adherence({}, () => true, now), { days: 0, planned: 0, done: 0, pct: null });
+  assert.equal(L.adherence(null, () => true, now).pct, null);
+});
 test("syncHealth: תקין, ישן, נכשל, וללא נתונים", () => {
   const now = new Date("2026-11-26T12:00:00Z");
   const ago = (h) => new Date(now - h * 3600000).toISOString();

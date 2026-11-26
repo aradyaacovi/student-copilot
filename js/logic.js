@@ -421,6 +421,22 @@
     return Math.max(0, Math.min(cap, Math.round((Math.max(0, free) / 60) * 2) / 2));
   }
 
+  // ---------- מדד: כמה מהתוכנית היומית בוצעה ----------
+  /**
+   * log: { "YYYY-MM-DD": [מזהי משימות שהיו בתוכנית של אותו בוקר] }.
+   * isDone(id): האם המשימה הושלמה. נספרים רק ימים שעברו (לא היום), בחלון של `days` ימים אחורה.
+   * מחזיר { days: כמה ימים נספרו, planned, done, pct } וב-pct הערך null כשאין עדיין נתונים.
+   */
+  function adherence(log, isDone, now, days) {
+    const today = iso(now), from = iso(addDays(now, -(days || 14)));
+    let n = 0, planned = 0, done = 0;
+    for (const [d, ids] of Object.entries(log || {})) {
+      if (d >= today || d < from || !ids || !ids.length) continue;
+      n++; planned += ids.length; done += ids.filter(isDone).length;
+    }
+    return { days: n, planned, done, pct: planned ? Math.round((done / planned) * 100) : null };
+  }
+
   // ---------- יומן Google: מאירועים לזמן תפוס (שלב 3, פונקציות טהורות) ----------
   const CAL_TZ = "Asia/Jerusalem";
 
@@ -685,7 +701,7 @@
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
     deadlineId, nextSessionAfter, applyRemote,
     estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
-    syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes,
+    syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes, adherence,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;

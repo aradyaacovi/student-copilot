@@ -108,7 +108,7 @@
   // ---------- cloud (Supabase) ----------
   const cfg = window.COPILOT_CONFIG || {};
   const cloud = { client: null, user: null, status: "off", error: "" };
-  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "previous", "target", "assume", "reviews"];
+  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "previous", "target", "assume", "reviews", "log"];
 
   async function cloudInit() {
     if (DEMO || !cfg.supabaseUrl || !cfg.supabaseAnonKey) return;
@@ -253,8 +253,22 @@
   function currentPlan() {
     const todays = L.sessionsOnDate(courses, data.semester, todayIso);
     const capacity = L.freeHoursToday(todays, now, data.semester.dayEnd, Number(state.dailyHours) || 4);
-    return { todays, plan: L.buildPlan(planItems(), now, { capacity, hoursPerDay: Math.max(1, (Number(state.dailyHours) || 4) - 1) }) };
+    const plan = L.buildPlan(planItems(), now, { capacity, hoursPerDay: Math.max(1, (Number(state.dailyHours) || 4) - 1) });
+    logTodaysPlan(plan);
+    return { todays, plan };
   }
+  // מצלמים את תוכנית הבוקר פעם אחת ביום, כדי שאפשר יהיה למדוד כמה ממנה בוצע. לא בדמו ולא בתאריך מקובע.
+  function logTodaysPlan(plan) {
+    const q = new URLSearchParams(location.search);
+    if (DEMO || q.has("today") || q.has("now") || !plan.today.length) return;
+    state.log = state.log || {};
+    if (state.log[todayIso]) return;
+    state.log[todayIso] = plan.today.map((i) => i.id);
+    const keep = L.iso(L.addDays(now, -60));
+    for (const d of Object.keys(state.log)) if (d < keep) delete state.log[d];
+    save();
+  }
+  const planItemDone = (id) => id.startsWith("pace|") ? !!state.seen[id.slice(5)] : id.startsWith("rev|") ? !!state.reviewed[id.slice(4)] : !!state.done[id];
   const KIND_ICON = { submission: "📌", quiz: "✏️", exam: "📝", catchup: "▶️", review: "🔁", custom: "•", other: "•" };
   const hoursText = (h) => (h >= 1 ? `${h % 1 ? h.toFixed(1) : h} ש׳` : `${Math.round(h * 60)} דק׳`);
   const doneLabel = (it) => (it.kind === "exam" ? "למדתי היום" : it.kind === "catchup" ? "ראיתי" : "סיימתי");
@@ -655,11 +669,22 @@
     return `<div class="card"><h3>📱 האפליקציה</h3>${body}</div>`;
   }
 
+  // מדד הצלחה: כמה ממשימות הבוקר בוצעו בשבועיים האחרונים. יעד ראשוני: 70 אחוז ומעלה.
+  function adherenceCard() {
+    const a = L.adherence(state.log, planItemDone, now, 14);
+    const text = a.days < 3
+      ? "עוד אין מספיק ימים למדידה. המערכת שומרת את תוכנית הבוקר כל יום, והמספר יופיע אחרי שלושה ימים."
+      : `<b>${a.pct}%</b> ממשימות הבוקר בוצעו (${a.done} מתוך ${a.planned}, ב-${a.days} ימים). היעד: 70% ומעלה.`;
+    return `<div class="card"><details><summary><h3 style="display:inline">📈 ביצוע התוכנית</h3></summary><p class="small">${text}</p>
+      <p class="small muted">נספרים ימים שעברו בלבד. משימה שהושלמה בדיעבד נחשבת. הנתונים נשמרים רק אצלך.</p></details></div>`;
+  }
+
   function viewSettings() {
     const srcText = { sample: "נתוני הדגמה (data/sample-semester.js)", mine: "הקובץ שלך (data/my-semester.js)", import: "נתונים שייבאת לדפדפן הזה", cloud: "הענן (Supabase)" }[source];
     return `<div class="grid">
       ${appCard()}
       ${cloudCard()}
+      ${adherenceCard()}
       <div class="card"><h3>💾 גיבוי ההתקדמות שלך</h3>
         <p class="small muted">מה שסימנת (ראיתי / בוצע), ציונים, משימות וסיכומים שהוספת נשמרים רק בדפדפן. כדאי לגבות מדי פעם.</p>
         <div class="row"><button class="btn" data-action="export">ייצוא גיבוי</button>
