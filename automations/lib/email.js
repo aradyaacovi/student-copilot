@@ -4,6 +4,19 @@
 const KEYWORDS = /(בוטל|ביטול|לא תתקיים|לא יתקיים|דחייה|נדחה|השלמה|הזזה|הוזז|שינוי חדר|שינוי מועד|מעבר לזום|בזום|מבחן|בוחן|הגשה|cancel|postpone|make-?up|rescheduled|moved|room change|zoom)/i;
 const SENDERS = /(bgu\.ac\.il|moodle)/i;
 
+/** הכתובת עצמה מתוך שדה "מאת". שם התצוגה נקבע בידי השולח ולכן לא נחשב. בלי כתובת אחת ברורה מחזיר "". */
+function senderAddress(from) {
+  const s = String(from || "").trim();
+  const angle = [...s.matchAll(/<([^<>]*)>/g)];
+  const cand = angle.length ? angle[angle.length - 1][1].trim() : s;
+  return /^[^\s@<>",;()]+@[^\s@<>",;()]+$/.test(cand) ? cand.toLowerCase() : "";
+}
+
+/** שולח מוסדי = הדומיין של הכתובת עצמה הוא bgu.ac.il או תת-דומיין שלו (כולל moodle.bgu.ac.il). */
+function isInstitutionalSender(from) {
+  return /@([a-z0-9-]+\.)*bgu\.ac\.il$/.test(senderAddress(from));
+}
+
 function emailFields(j) {
   const html = j.textHtml || j.html || "";
   const text = j.textPlain || j.text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -137,6 +150,9 @@ function interpret(result, e, data, L) {
     }
     if (it.type === "extra" && !date) date = it.new_date;
     let review = it.confidence === "low" || !hasType || !date;
+    // שינוי בלו"ז מוחל אוטומטית רק ממייל שהכתובת שלו מוסדית. אחרת (למשל שם תצוגה מוסדי על כתובת זרה) תמיד לאישור.
+    const trusted = isInstitutionalSender(e.from);
+    if (!trusted) review = true;
     if (it.is_my_group === "unknown" && sessionType !== "lecture") review = true;
     if (date && (it.type === "cancelled" || it.type === "moved") && hasType) {
       const s = course.sessions.find((x) => x.type === sessionType);
@@ -155,7 +171,7 @@ function interpret(result, e, data, L) {
       new_date: it.new_date || null, start_time: it.start_time || null, end_time: it.end_time || null,
       location: it.location || null, note: (it.note || "").slice(0, 200) + resolvedNote,
       source_ref: ref, confidence: it.confidence, status: review ? "needs_review" : "applied",
-      _inbox: { kind: review ? "review" : "alert", title: review ? `לאשר? ${title}` : title, body: `${it.note || result.summary}${resolvedNote}\n\n${src}`, dedupe_key: `mail-ch-${ref}-${i}` },
+      _inbox: { kind: review ? "review" : "alert", title: review ? `לאשר? ${title}` : title, body: `${it.note || result.summary}${resolvedNote}${trusted ? "" : "\n\nהשולח לא מזוהה כמוסדי (הכתובת עצמה לא מ-bgu.ac.il), לכן לא הוחל אוטומטית."}\n\n${src}`, dedupe_key: `mail-ch-${ref}-${i}` },
     });
   });
   return out;
@@ -221,4 +237,4 @@ function ruleExtract(e, data, L) {
   };
 }
 
-module.exports = { emailFields, isCandidate, buildRequest, ANTHROPIC_HEADERS, readResponse, interpret, schema, ruleExtract };
+module.exports = { emailFields, isCandidate, buildRequest, ANTHROPIC_HEADERS, readResponse, interpret, senderAddress, isInstitutionalSender, schema, ruleExtract };
