@@ -4,6 +4,8 @@
 const fs = require("fs");
 const path = require("path");
 const { loadEnv, missingKeys, invalidKeys } = require("./env.js");
+const { makeSupa, recordRun } = require("./lib/common.js");
+const L = require("../js/logic.js");
 const envPath = path.join(__dirname, ".env");
 // בענן (GitHub Actions) אין קובץ .env: ההגדרות מגיעות ממשתני סביבה.
 const env = loadEnv(fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "", process.env);
@@ -34,6 +36,15 @@ const http = async (o) => {
   const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "workflows", what + ".json"), "utf8"));
   const code = wf.nodes.find((n) => n.type === "n8n-nodes-base.code").parameters.jsCode;
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => [] });
+  const supa = makeSupa(http, env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+  const heartbeat = (err) => recordRun(supa, env.USER_ID, what, err, new Date(), L.SYNC_LABEL);
+  let out;
+  try {
+    out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => [] });
+  } catch (e) {
+    await heartbeat(e.message); // הדופק נרשם גם בכשל, כדי שהאפליקציה תדע ולא תשתוק
+    throw e;
+  }
+  await heartbeat(null);
   console.log(wf.name, "→", JSON.stringify(out.map((o) => o.json)));
 })().catch((e) => { console.error("נכשל:", e.message); process.exit(1); });
