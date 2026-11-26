@@ -391,12 +391,17 @@ test("workflow מייל רץ גם בלי מפתח Anthropic ולא קורא ל-A
   assert.ok(db.inbox.length >= 1);
 });
 
+function splitJobs(y) {
+  const out = {};
+  const body = y.slice(y.indexOf("\njobs:\n") + 7);
+  for (const m of body.matchAll(/^  ([a-z]+):\n([\s\S]*?)(?=^  [a-z]+:\n|(?![\s\S]))/gm)) out[m[1]] = m[2];
+  return out;
+}
 test("workflow מתוזמן: קיים, משתמש בסודות לפי שם ובהרשאת קריאה בלבד", () => {
   const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
   for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID", "MOODLE_ICS_URL"]) assert.ok(y.includes("secrets." + k), k);
   assert.ok(/permissions:\s*\n\s*contents: read/.test(y));
   for (const k of ["ANTHROPIC_API_KEY", "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"]) assert.ok(y.includes("secrets." + k), k);
-  assert.ok(y.includes("imapflow@") && y.includes("mailparser@"), "ספריות המייל מקובעות לגרסה");
 });
 
 test("דופק: הצלחה מאפסת כשלונות, כשל מעלה אותם ומוסיף התראה אחת ליום", async () => {
@@ -431,10 +436,34 @@ test("דופק: כשל ברישום עצמו לא זורק ולא מסתיר א�
   const supa = { select: async () => { throw new Error("down"); }, upsert: async () => { throw new Error("down"); } };
   assert.equal(await recordRun(supa, "u1", "3-briefs", "boom", new Date(), {}), false);
 });
-test("workflow מתוזמן: כשל באוטומציה אחת לא עוצר את האחרות והריצה נכשלת", () => {
+const secretsIn = (text) => [...new Set([...text.matchAll(/secrets\.([A-Z_]+)/g)].map((m) => m[1]))].sort();
+test("workflow מתוזמן: כל אוטומציה ב-job משלה, כשל באחת לא עוצר את האחרות", () => {
   const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
-  assert.ok(/\|\| \{[^}]*rc=1/.test(y) && y.includes("exit $rc"));
+  const jobs = splitJobs(y);
+  for (const k of ["moodle", "email", "briefs", "reminders", "calendar"]) {
+    assert.ok(jobs[k], k);
+    assert.ok(/needs: decide\n/.test(jobs[k]), k + " תלוי רק בשלב ההחלטה");
+  }
+  assert.ok(!y.includes("continue-on-error") && !y.includes("fail-fast"));
 });
+test("workflow מתוזמן: כל job מקבל רק את הסודות שהוא צריך, וספריות המייל רק ב-job המייל", () => {
+  const y = fs.readFileSync(path.join(__dirname, "../.github/workflows/automations.yml"), "utf8");
+  const jobs = splitJobs(y);
+  const S = ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "USER_ID"];
+  const allowed = {
+    moodle: [...S, "MOODLE_ICS_URL"],
+    email: [...S, "GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "ANTHROPIC_API_KEY"],
+    briefs: S, reminders: S,
+    calendar: [...S, "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
+  };
+  for (const [name, ok] of Object.entries(allowed)) assert.deepEqual(secretsIn(jobs[name]), [...ok].sort(), name);
+  assert.ok(jobs.email.includes("imapflow@") && jobs.email.includes("mailparser@"), "ספריות המייל מקובעות לגרסה");
+  for (const [name, body] of Object.entries(jobs)) if (name !== "email" && name !== "decide") assert.ok(!/imapflow|mailparser|npm install/.test(body), name + " לא מתקין ספריות");
+  assert.ok(!jobs.email.split("- name: Run")[0].includes("secrets."), "שלב ההתקנה רץ בלי סודות");
+  assert.deepEqual(secretsIn(jobs.decide), ["GOOGLE_REFRESH_TOKEN"], "שלב ההחלטה בודק רק קיום אסימון");
+  assert.ok(!/echo[^\n]*\$\{?(SUPABASE|GMAIL|GOOGLE|ANTHROPIC|MOODLE|USER_ID)|set -x|printenv/.test(y), "אין הדפסת סודות");
+});
+
 
 (async () => {
   for (const [name, fn] of tests) {

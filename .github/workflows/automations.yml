@@ -55,9 +55,31 @@ jobs:
           echo "שעה בישראל: $H, להריץ: ${list:-כלום}"
           echo "list=$list" >> "$GITHUB_OUTPUT"
 
-  run:
+  # כל אוטומציה רצה ב-job משלה ומקבלת רק את הסודות שהיא צריכה. כך ספרייה פגומה
+  # (למשל תלות של imapflow) לא רואה את סודות Google, ותדריכים לא רואים את Gmail.
+  # כשל ב-job אחד לא עוצר את האחרים, והריצה כולה נכשלת ומתריעה במייל.
+  moodle:
     needs: decide
-    if: needs.decide.outputs.list != ''
+    if: contains(needs.decide.outputs.list, '1-moodle-sync')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 20 }
+      - name: Run 1-moodle-sync
+        env:
+          TZ: Asia/Jerusalem
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          USER_ID: ${{ secrets.USER_ID }}
+          MOODLE_ICS_URL: ${{ secrets.MOODLE_ICS_URL }}
+        run: |
+          node automations/run-local.js 1-moodle-sync
+
+  email:
+    needs: decide
+    if: contains(needs.decide.outputs.list, '2-email-changes')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -65,31 +87,77 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 20 }
       - name: Install mail libraries
-        if: contains(needs.decide.outputs.list, '2-email-changes')
         run: npm install --no-save --no-audit --no-fund imapflow@2.11.0 mailparser@3.14.4
-      - name: Run
+      - name: Run 2-email-changes
+        env:
+          TZ: Asia/Jerusalem
+          EVENT: ${{ github.event_name }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          USER_ID: ${{ secrets.USER_ID }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ inputs.drill && 'drillwrongpass1234' || secrets.GMAIL_APP_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # בענן המייל עדיין לא בהכרח מוגדר: בריצה מתוזמנת בלי סיסמה מדלגים בהודעה, לא בכשל.
+          if [ -z "$GMAIL_APP_PASSWORD" ] && [ "$EVENT" = "schedule" ]; then
+            echo "::notice::מייל עדיין לא מוגדר (חסר GMAIL_APP_PASSWORD), מדלגת"; exit 0
+          fi
+          node automations/run-local.js 2-email-changes
+
+  briefs:
+    needs: decide
+    if: contains(needs.decide.outputs.list, '3-briefs')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 20 }
+      - name: Run 3-briefs
         env:
           TZ: Asia/Jerusalem
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           USER_ID: ${{ secrets.USER_ID }}
-          MOODLE_ICS_URL: ${{ secrets.MOODLE_ICS_URL }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node automations/run-local.js 3-briefs
+
+  reminders:
+    needs: decide
+    if: contains(needs.decide.outputs.list, '4-reminders')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 20 }
+      - name: Run 4-reminders
+        env:
+          TZ: Asia/Jerusalem
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          USER_ID: ${{ secrets.USER_ID }}
+        run: |
+          node automations/run-local.js 4-reminders
+
+  calendar:
+    needs: decide
+    if: contains(needs.decide.outputs.list, '5-calendar-sync')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 20 }
+      - name: Run 5-calendar-sync
+        env:
+          TZ: Asia/Jerusalem
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          USER_ID: ${{ secrets.USER_ID }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ inputs.drill && 'drillwrongpass1234' || secrets.GMAIL_APP_PASSWORD }}
-          LIST: ${{ needs.decide.outputs.list }}
         run: |
-          # כשל באוטומציה אחת לא עוצר את האחרות, אבל הריצה כולה נכשלת ו-GitHub שולח התראה במייל.
-          rc=0
-          for w in $LIST; do
-            if [ "$w" = "2-email-changes" ] && [ -z "$GMAIL_APP_PASSWORD" ] && [ "${{ github.event_name }}" = "schedule" ]; then
-              echo "::notice::מייל עדיין לא מוגדר (חסר GMAIL_APP_PASSWORD), מדלגת"; continue
-            fi
-            echo "::group::$w"
-            node automations/run-local.js "$w" || { echo "::error::$w נכשל"; rc=1; }
-            echo "::endgroup::"
-          done
-          exit $rc
+          node automations/run-local.js 5-calendar-sync
