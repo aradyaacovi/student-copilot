@@ -168,7 +168,7 @@ test("workflow יומן: הפלט והשורות שנכתבות כוללים מ�
   const shown = JSON.stringify(out) + JSON.stringify(db.calendar_busy);
   for (const s of ["פגישה", "הרופא", "סודי", "someone@example.com", "רגישים"]) assert.ok(!shown.includes(s), s);
   assert.deepEqual(Object.keys(out[0].json).sort(), ["busy", "events"]);
-  assert.deepEqual(Object.keys(db.calendar_busy[0]).sort(), ["date", "end_time", "start_time", "user_id"]);
+  assert.deepEqual(Object.keys(db.calendar_busy[0]).filter((k) => k !== "id").sort(), ["date", "end_time", "start_time", "user_id"]); // id מוסיף רק הדמיית בסיס הנתונים
   // גם הודעת שגיאה מבקשה שנכשלה לא מכילה תוכן אירועים
   const Gcal = require("../automations/lib/gcal.js");
   await assert.rejects(Gcal.fetchEvents(async () => { throw new Error("GET https://www.googleapis.com/calendar/v3/calendars/primary/events → HTTP 500"); }, "t", "primary", "a", "b"), (e) => !/פגישה|רופא/.test(e.message));
