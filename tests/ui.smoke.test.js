@@ -250,10 +250,16 @@ async function main() {
   base = `http://127.0.0.1:${sport}`;
   const port = await freePort();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-"));
-  const proc = spawn(browser, [
-    "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions",
-    `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank",
-  ], { stdio: "ignore" });
+  let proc, stderr = "";
+  const launch = () => {
+    const extra = process.platform === "linux" ? ["--no-sandbox", "--disable-dev-shm-usage"] : []; // CI containers
+    proc = spawn(browser, [
+      "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...extra,
+      `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank",
+    ], { stdio: ["ignore", "ignore", "pipe"] });
+    proc.stderr.on("data", (d) => { stderr = (stderr + d).slice(-1500); });
+  };
+  launch();
   const cleanup = async () => {
     try { cdp && cdp.close(); } catch { /* already closed */ }
     proc.kill(); server.kill();
@@ -263,11 +269,13 @@ async function main() {
 
   try {
     let target;
-    await until(async () => {
+    const findTarget = async () => {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
       target = list.find((t) => t.type === "page");
       return target;
-    }, "browser start", 15000);
+    };
+    try { await until(findTarget, "browser start", 10000); }
+    catch { proc.kill(); await wait(500); launch(); await until(findTarget, "browser start (second try). Browser said: " + stderr, 15000); }
     await until(async () => (await fetch(base + "/index.html")).ok, "server start");
 
     cdp = connect(target.webSocketDebuggerUrl);
