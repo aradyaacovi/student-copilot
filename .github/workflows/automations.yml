@@ -13,7 +13,7 @@ on:
       which:
         description: "מה להריץ עכשיו"
         type: choice
-        options: [1-moodle-sync, 3-briefs, 4-reminders]
+        options: [1-moodle-sync, 2-email-changes, 3-briefs, 4-reminders]
         default: 3-briefs
 
 permissions:
