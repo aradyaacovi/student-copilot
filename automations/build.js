@@ -36,21 +36,25 @@ await postInbox(fresh.map((e) => ({ kind: "alert", title: \`חדש במודל: \
 return [{ json: { found: found.length, new: fresh.length, unmatched: found.filter((e) => !e.course_id).map((e) => e.title) } }];`,
 
   email: `
-if (!$env.ANTHROPIC_API_KEY) throw new Error("חסר ANTHROPIC_API_KEY ב-automations/.env");
 const ctx = await Common.loadContext(supa, ENV.user, L);
 const report = [];
 for (const item of $input.all()) {
   const e = Email.emailFields(item.json);
   if (!e.subject && !e.text) continue;
   if (!Email.isCandidate(e)) { report.push({ subject: e.subject, skipped: "לא רלוונטי" }); continue; }
-  let res;
-  try {
-    res = await http({ method: "POST", url: "https://api.anthropic.com/v1/messages", headers: Email.ANTHROPIC_HEADERS($env.ANTHROPIC_API_KEY), body: Email.buildRequest(e, ctx.data, L), json: true, timeout: 180000 });
-  } catch (err) {
-    await postInbox([{ kind: "alert", title: "לא הצלחתי לנתח מייל", body: \`\${e.subject}\\n\${err.message}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]);
-    report.push({ subject: e.subject, error: err.message }); continue;
+  let result, reason;
+  if ($env.ANTHROPIC_API_KEY) {
+    let res;
+    try {
+      res = await http({ method: "POST", url: "https://api.anthropic.com/v1/messages", headers: Email.ANTHROPIC_HEADERS($env.ANTHROPIC_API_KEY), body: Email.buildRequest(e, ctx.data, L), json: true, timeout: 180000 });
+    } catch (err) {
+      await postInbox([{ kind: "alert", title: "לא הצלחתי לנתח מייל", body: \`\${e.subject}\\n\${err.message}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]);
+      report.push({ subject: e.subject, error: err.message }); continue;
+    }
+    ({ result, reason } = Email.readResponse(res));
+  } else {
+    result = Email.ruleExtract(e, ctx.data, L); // בלי מפתח: חילוץ לפי כללים, בלי מודל ובלי עלות
   }
-  const { result, reason } = Email.readResponse(res);
   if (!result) { await postInbox([{ kind: "alert", title: "מייל לבדיקה ידנית", body: \`\${e.subject}\\n\${reason}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]); report.push({ subject: e.subject, error: reason }); continue; }
   const acts = Email.interpret(result, e, ctx.data, L);
   await supa.upsert("events", withUser(acts.events), "user_id,source,external_id", "merge");

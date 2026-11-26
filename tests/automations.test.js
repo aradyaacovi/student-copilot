@@ -83,7 +83,7 @@ test("תדריכים ותזכורות", () => {
 });
 
 // ---------- הרצת ה-workflows עצמם בסביבת n8n מדומה ----------
-function runWorkflow(file, { inputs = [], claude } = {}) {
+function runWorkflow(file, { inputs = [], claude, noKey } = {}) {
   const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "../automations/workflows", file), "utf8"));
   const node = wf.nodes.find((n) => n.type === "n8n-nodes-base.code");
   const db = { inbox: [], events: [], schedule_changes: [] };
@@ -97,7 +97,7 @@ function runWorkflow(file, { inputs = [], claude } = {}) {
     if (o.method === "POST") { const rows = o.body.map((r, i) => ({ id: db[table].length + i + 1, ...r })); db[table].push(...rows); return rows; }
     return [];
   };
-  const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ANTHROPIC_API_KEY: "test" };
+  const $env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_KEY: "k", USER_ID: "u1", MOODLE_ICS_URL: "https://moodle.example/ics", ...(noKey ? {} : { ANTHROPIC_API_KEY: "test" }) };
   const $input = { all: () => inputs.map((json) => ({ json })) };
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   // שעון קבוע: נתוני הדוגמה הם מנובמבר 2026, והבדיקה לא תלויה בתאריך ההרצה
@@ -206,6 +206,35 @@ test("מייל: שדות הפריט מתאימים למה שה-workflow מצפה
   assert.equal(f.messageId, "<m9>");
   assert.equal(f.from, "x@bgu.ac.il");
   assert.ok(Email.isCandidate(f));
+});
+
+test("מייל בלי מודל: ביטול עם קורס ותאריך מפורשים מזוהה, אבל לא מוחל בלי ודאות לגבי הקבוצה", () => {
+  const e = { ...mail, subject: "סטטיסטיקה – ביטול תרגול", text: "תרגול סטטיסטיקה ב-22.11 מבוטל" };
+  const r = Email.ruleExtract(e, DATA, L);
+  assert.equal(r.relevant, true);
+  assert.equal(r.items[0].course_id, "stats");
+  assert.equal(r.items[0].type, "cancelled");
+  assert.equal(r.items[0].session_type, "tutorial");
+  assert.equal(r.items[0].date, "2026-11-22");
+  const a = Email.interpret(r, e, DATA, L);
+  assert.equal(a.changes[0].status, "needs_review"); // קבוצה לא ידועה בתרגול = לאישור
+});
+
+test("מייל בלי מודל: ספק גורר לבדיקה, והודעה לא קשורה מתעלמים ממנה", () => {
+  const vague = Email.ruleExtract({ ...mail, subject: "ביטול", text: "ההרצאה הקרובה מבוטלת" }, DATA, L);
+  assert.equal(vague.items[0].course_id, "unknown");
+  assert.equal(vague.items[0].confidence, "low");
+  assert.equal(Email.interpret(vague, mail, DATA, L).inbox[0].title, "מייל לבירור – לא זוהה קורס");
+  assert.equal(Email.ruleExtract({ ...mail, subject: "משרת סטודנט", text: "מחפשים עובדים" }, DATA, L).relevant, false);
+  const moved = Email.ruleExtract({ ...mail, subject: "אלגוריתמים", text: "ההרצאה מ-24.11 הוזזה ל-26.11 בשעה 10:00, בזום" }, DATA, L).items[0];
+  assert.deepEqual([moved.type, moved.date, moved.new_date, moved.start_time, moved.location], ["moved", "2026-11-24", "2026-11-26", "10:00", "זום"]);
+});
+
+test("workflow מייל רץ גם בלי מפתח Anthropic ולא קורא ל-API", async () => {
+  const { db, calls } = await runWorkflow("2-email-changes.json", { noKey: true, inputs: [{ from: "x@bgu.ac.il", subject: "סטטיסטיקה ביטול הרצאה", textPlain: "הרצאה סטטיסטיקה ב-22.11 מבוטלת", date: "2026-11-16T16:00:00Z", metadata: { "message-id": "<m2>" } }] });
+  assert.ok(!calls.some((c) => c.url.includes("anthropic")));
+  assert.equal(db.schedule_changes.length, 1);
+  assert.ok(db.inbox.length >= 1);
 });
 
 test("workflow מתוזמן: קיים, משתמש בסודות לפי שם ובהרשאת קריאה בלבד", () => {

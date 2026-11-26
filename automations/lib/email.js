@@ -161,4 +161,64 @@ function interpret(result, e, data, L) {
   return out;
 }
 
-module.exports = { emailFields, isCandidate, buildRequest, ANTHROPIC_HEADERS, readResponse, interpret, schema };
+/**
+ * חילוץ לפי כללים, בלי מודל ובלי עלות. מחזיר אובייקט באותה צורה כמו תשובת Claude,
+ * כך ש-interpret עובד עליו בלי שינוי. הזהירות כאן גבוהה: ספק = confidence "low" = לאישור באפליקציה.
+ */
+const RE_CANCEL = /(בוטל|מבוטל|ביטול|לא תתקיים|לא יתקיים|cancel)/i;
+const RE_EXTRA = /(השלמה|make-?up)/i;
+const RE_MOVED = /(הוזז|הזזה|נדחה|דחייה|שינוי מועד|שינוי חדר|מעבר לזום|בזום|rescheduled|moved|postpone|room change|zoom)/i;
+const RE_DEADLINE = /(הגשה|להגיש|בוחן|מבחן|deadline|due)/i;
+
+function findDates(text, mailDate) {
+  const out = [];
+  const re = /(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const d = +m[1], mo = +m[2];
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+    let y = m[3] ? +m[3] : mailDate.getFullYear();
+    if (y < 100) y += 2000;
+    if (!m[3] && new Date(y, mo - 1, d) < new Date(mailDate.getTime() - 60 * 86400000)) y += 1;
+    out.push(`${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+function ruleExtract(e, data, L) {
+  const text = `${e.subject}\n${e.text}`.slice(0, 4000);
+  const low = text.toLowerCase();
+  const hits = data.courses.filter((c) => [c.name, c.short, c.code].filter((x) => x && String(x).length >= 3).some((x) => low.includes(String(x).toLowerCase())));
+  const course = hits.length === 1 ? hits[0] : null;
+  let type = null;
+  if (RE_CANCEL.test(text)) type = "cancelled";
+  else if (RE_EXTRA.test(text)) type = "extra";
+  else if (RE_MOVED.test(text)) type = "moved";
+  else if (RE_DEADLINE.test(text)) type = /בוחן|מבחן/.test(text) ? "exam_change" : "deadline";
+  if (!type) return { relevant: false, summary: "", items: [] };
+  const session = /(תרגול|תרגיל|tutorial)/i.test(text) ? "tutorial" : /(מעבדה|סדנה|workshop)/i.test(text) ? "workshop" : /(הרצאה|lecture)/i.test(text) ? "lecture" : "none";
+  const dates = findDates(text, e.date);
+  const times = [...text.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2]}`);
+  const zoom = /(זום|zoom)/i.test(text);
+  const sure = !!(course && dates.length && type);
+  return {
+    relevant: true,
+    summary: e.subject.slice(0, 120),
+    items: [{
+      course_id: course ? course.id : "unknown",
+      type,
+      session_type: session,
+      date: dates[0] || "",
+      new_date: type === "moved" || type === "extra" ? (dates[1] || "") : "",
+      start_time: times[0] || "",
+      end_time: times[1] || "",
+      location: zoom ? "זום" : "",
+      title: type === "deadline" || type === "exam_change" ? e.subject.slice(0, 80) : "",
+      is_my_group: "unknown",
+      confidence: sure ? "high" : "low",
+      note: "זוהה אוטומטית לפי כללים (בלי מודל). כדאי לוודא מול המייל המקורי.",
+    }],
+  };
+}
+
+module.exports = { emailFields, isCandidate, buildRequest, ANTHROPIC_HEADERS, readResponse, interpret, schema, ruleExtract };
