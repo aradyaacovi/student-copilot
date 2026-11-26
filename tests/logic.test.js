@@ -79,6 +79,14 @@ test("weekLoad + semesterWeek", () => {
   assert.equal(w.find((x) => x.current).load, 20);
   assert.equal(L.semesterWeek(sem, new Date(2026, 10, 16)).n, 5);
 });
+test("index.html: סקריפט Supabase מקובע לגרסה מדויקת, עם SRI ו-crossorigin", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  const tag = html.match(/<script[^>]*jsdelivr[^>]*supabase-js[^>]*>/);
+  assert.ok(tag, "נמצא תג הסקריפט");
+  assert.ok(/supabase-js@\d+\.\d+\.\d+\/dist\//.test(tag[0]), "גרסה מדויקת, לא טווח");
+  assert.ok(/integrity="sha384-[A-Za-z0-9+/]{64}"/.test(tag[0]), "יש integrity sha384");
+  assert.ok(/crossorigin="anonymous"/.test(tag[0]));
+});
 console.log(`${passed} בדיקות עברו בסך הכול`);
 
 // --- focus plan ---

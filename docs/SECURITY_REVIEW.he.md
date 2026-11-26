@@ -16,7 +16,7 @@
 
 ## חשוב
 
-### 1. סקריפט Supabase נטען מ-CDN בלי גרסה קבועה ובלי SRI
+### 1. סקריפט Supabase נטען מ-CDN בלי גרסה קבועה ובלי SRI (תוקן)
 `index.html` טוען `cdn.jsdelivr.net/npm/@supabase/supabase-js@2`. זו כל גרסה 2.x שתצא, והסקריפט רץ באותו דף שמחזיק את אסימון ההתחברות ב-localStorage. אם החבילה או ה-CDN נפרצים, התוקף קורא את האסימון ואת כל הנתונים.
 **המלצה:** לקבע גרסה מדויקת ולהוסיף `integrity="sha384-..."` עם `crossorigin="anonymous"`. אפשר גם להעתיק את הקובץ לריפו (`js/vendor/`), וזה גם נותן עבודה לא מקוונת. צריך אחר כך להעלות `VERSION` ב-`sw.js`.
 
@@ -103,6 +103,7 @@ object-src 'none'; base-uri 'none'; form-action 'self'
 - `js/app.js`: `esc = L.escapeHtml`; `safeUrl` בשלושה קישורים; `esc` ב-`data-course` של `chip`.
 - `tests/logic.test.js`: בדיקה אחת. כל 28 בדיקות הלוגיקה ו-38 בדיקות האוטומציה עוברות.
 - `sw.js`: `VERSION` עלה ל-`v15`, כי קבצי ליבה השתנו.
+- ממצא 1: `index.html`: `supabase-js@2.119.2/dist/umd/supabase.js` עם `integrity="sha384-..."` ו-`crossorigin="anonymous"`. ה-hash חושב מהקובץ שמוגש מ-jsDelivr (אותו תוכן כמו הכתובת הישנה, עם הערת כותרת בלבד). ה-CDN שולח `access-control-allow-origin: *`, ולכן בקשת ה-CORS עוברת, וה-service worker שומר עכשיו תשובה רגילה במקום opaque. `sw.js`: `VERSION` עלה ל-`v16`. בדיקה חדשה ב-`tests/logic.test.js`. כדי לעדכן גרסה: להחליף גרסה ו-hash יחד (`openssl dgst -sha384 -binary supabase.js | openssl base64 -A`). לא בוצע: העתקה ל-`js/vendor/` (עבודה לא מקוונת).
 - ממצא 4 (א): `automations.yml`: ה-job `run` פוצל לחמישה jobs (`moodle`, `email`, `briefs`, `reminders`, `calendar`), כל אחד עם הסודות שלו בלבד. התקנת `imapflow` ו-`mailparser` רק ב-job המייל, בשלב בלי סודות. job המייל מקבל גם `ANTHROPIC_API_KEY`, כי בלעדיו המייל יורד לחילוץ לפי כללים (שינוי התנהגות). דילוג בריצה מתוזמנת בלי סיסמת Gmail נשמר, וכן תרגיל הכשל (`drill`). בדיקות חדשות ב-`tests/automations.test.js` נועלות את הסודות לכל job, את ההתקנה במייל בלבד, ואת היעדר הדפסת סודות.
   נשאר: (ב) `package-lock.json` עם `npm ci --ignore-scripts` לתלויות העקיפות של המייל, ו-(ג) מפתח Supabase מצומצם במקום `service_role`. שניהם לא בהיקף הזה.
 - ממצא 2: `automations/lib/email.js`: `senderAddress` ו-`isInstitutionalSender` בודקות את הכתובת עצמה (לא שם התצוגה): דומיין `bgu.ac.il` או תת-דומיין. `interpret` מחיל שינוי (`applied`) רק משולח כזה ורק בביטחון גבוה. כל השאר `needs_review` עם הסבר בהודעה. ספק נשאר לאישור כמו קודם. 4 בדיקות חדשות עם מיילים סינתטיים (שם תצוגה מזויף, הוראות מזיקות בגוף, מייל תקין שמוחל). קבצי ה-workflow נבנו מחדש.
