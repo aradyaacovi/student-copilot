@@ -15,6 +15,10 @@ on:
         type: choice
         options: [1-moodle-sync, 2-email-changes, 3-briefs, 4-reminders, 5-calendar-sync]
         default: 3-briefs
+      drill:
+        description: "תרגיל כשל: מחליף רק בריצה הזאת את סיסמת Gmail בערך שגוי (הסוד לא משתנה)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -75,7 +79,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_APP_PASSWORD: ${{ inputs.drill && 'drillwrongpass1234' || secrets.GMAIL_APP_PASSWORD }}
           LIST: ${{ needs.decide.outputs.list }}
         run: |
           # כשל באוטומציה אחת לא עוצר את האחרות, אבל הריצה כולה נכשלת ו-GitHub שולח התראה במייל.

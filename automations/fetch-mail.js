@@ -45,4 +45,11 @@ async function fetchNewMail({ address, password }, { ImapFlow, simpleParser }) {
   };
 }
 
-module.exports = { fetchNewMail, toItem, LABEL, MAX_MAILS };
+// הודעת שגיאה בטוחה לרישום ולהצגה: בלי כתובות, נושאים או טקסט מהשרת, רק מה קרה וקוד.
+function describeMailError(e) {
+  if (e && e.authenticationFailed) return "ההתחברות לג׳ימייל נכשלה (בדקי את GMAIL_APP_PASSWORD)";
+  const code = e && (e.code || e.name);
+  return "קריאת המייל נכשלה" + (code ? " (" + code + ")" : "");
+}
+
+module.exports = { fetchNewMail, describeMailError, toItem, LABEL, MAX_MAILS };

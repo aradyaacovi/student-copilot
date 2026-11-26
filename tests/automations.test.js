@@ -348,6 +348,14 @@ test("מייל בלי מודל: פערים מוכרים (נועלים את הה�
   assert.deepEqual([both.it.type, both.it.date, both.it.new_date], ["cancelled", "2026-11-24", ""]);
 });
 
+test("מייל: כשל בהתחברות לג׳ימייל מתואר בהודעה בטוחה, בלי פרטים מהשרת", () => {
+  const { describeMailError } = require("../automations/fetch-mail.js");
+  const auth = describeMailError({ authenticationFailed: true, message: "secret@gmail.com rejected", responseText: "x" });
+  assert.ok(auth.includes("GMAIL_APP_PASSWORD") && !auth.includes("secret"));
+  assert.equal(describeMailError({ code: "ENOTFOUND", message: "getaddrinfo imap.gmail.com" }), "קריאת המייל נכשלה (ENOTFOUND)");
+  assert.equal(describeMailError(new Error("boom")).includes("boom"), false);
+});
+
 test("workflow מייל רץ גם בלי מפתח Anthropic ולא קורא ל-API", async () => {
   const { db, calls, out } = await runWorkflow("2-email-changes.json", { noKey: true, inputs: [{ from: "x@bgu.ac.il", subject: "סטטיסטיקה ביטול הרצאה", textPlain: "הרצאה סטטיסטיקה ב-22.11 מבוטלת", date: "2026-11-16T16:00:00Z", metadata: { "message-id": "<m2>" } }] });
   assert.ok(!calls.some((c) => c.url.includes("anthropic")));
