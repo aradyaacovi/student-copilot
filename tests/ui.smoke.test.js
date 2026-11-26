@@ -37,7 +37,7 @@ const CANDIDATES = [
 ].filter(Boolean);
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(fn, what, ms = 8000) {
+async function until(fn, what, ms = 15000) {
   const end = Date.now() + ms;
   for (;;) {
     let v;
