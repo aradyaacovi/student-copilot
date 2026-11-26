@@ -421,6 +421,58 @@
     return Math.max(0, Math.min(cap, Math.round((Math.max(0, free) / 60) * 2) / 2));
   }
 
+  // ---------- יומן Google: מאירועים לזמן תפוס (שלב 3, פונקציות טהורות) ----------
+  const CAL_TZ = "Asia/Jerusalem";
+
+  /** שעון קיר באזור הזמן: מחזיר { date: "YYYY-MM-DD", min: דקות מחצות }. מתחשב במעבר שעון חורף וקיץ. */
+  function wallClock(dateTime, tz) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz || CAL_TZ, hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    }).formatToParts(new Date(dateTime));
+    const g = (t) => parts.find((p) => p.type === t).value;
+    return { date: `${g("year")}-${g("month")}-${g("day")}`, min: Number(g("hour")) * 60 + Number(g("minute")) };
+  }
+  const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+  /**
+   * events: אירועים בצורת Google Calendar (start/end עם dateTime, status, transparency).
+   * מחזיר קטעי זמן תפוס ליום אחד, בפורמט שמקבלת freeHoursToday: [{ start: "HH:MM", end: "HH:MM" }].
+   * מדלגים על: אירוע שבוטל, אירוע שמסומן "פנוי", אירוע של יום שלם, ואירוע שהאפליקציה עצמה כתבה.
+   */
+  function calendarBusyForDay(events, dateIso, tz) {
+    const out = [];
+    for (const e of events || []) {
+      if (e.status === "cancelled" || e.transparency === "transparent") continue;
+      if (!e.start || !e.start.dateTime || !e.end || !e.end.dateTime) continue; // יום שלם
+      if (e.extendedProperties && e.extendedProperties.private && e.extendedProperties.private.copilot) continue;
+      const s = wallClock(e.start.dateTime, tz), f = wallClock(e.end.dateTime, tz);
+      if (s.date > dateIso || f.date < dateIso) continue;
+      const a = s.date < dateIso ? 0 : s.min;
+      const b = f.date > dateIso ? 1440 : f.min;
+      if (b > a) out.push({ start: hhmm(a), end: hhmm(b) });
+    }
+    return out.sort((x, y) => x.start.localeCompare(y.start));
+  }
+
+  /**
+   * שיעור מוקלט או בזום אפשר לצפות בו בכל שעה, ולכן אירוע ביומן שרק משקף אותו לא אמור לתפוס זמן.
+   * מסירים קטע תפוס שחופף לפחות 70 אחוז משיעור כזה. שיעור בקמפוס כבר מופחת בנפרד, והאיחוד של
+   * busyMinutes מונע ספירה כפולה.
+   */
+  function dropSessionEchoes(busy, sessions) {
+    const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const flexible = (sessions || []).filter((s) => s.session && (s.session.recorded || s.session.online));
+    return (busy || []).filter((b) => {
+      const a = toMin(b.start), z = toMin(b.end);
+      return !flexible.some((s) => {
+        const sa = toMin(s.start), sz = toMin(s.end);
+        const overlap = Math.min(z, sz) - Math.max(a, sa);
+        return overlap > 0 && overlap / Math.min(z - a, sz - sa) >= 0.7;
+      });
+    });
+  }
+
   /**
    * Catch-up queue from the pace tracker. Fresh items (≤7 days) are due before the next tutorial
    * (lectures) or within a week. Older backlog is spread out: `perDay` items per day, oldest first,
@@ -633,7 +685,7 @@
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
     deadlineId, nextSessionAfter, applyRemote,
     estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
-    syncHealth, SYNC_LABEL,
+    syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;
