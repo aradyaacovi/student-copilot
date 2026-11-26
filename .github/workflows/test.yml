@@ -10,3 +10,5 @@ jobs:
       - run: node tests/logic.test.js
       - run: node tests/automations.test.js
         env: { TZ: Asia/Jerusalem }
+      - run: node tests/ui.smoke.test.js
+        env: { TZ: Asia/Jerusalem }
