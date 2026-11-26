@@ -45,11 +45,12 @@ const CANDIDATES = [
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, what, ms = 15000) {
   const end = Date.now() + ms;
+  let last = "";
   for (;;) {
     let v;
-    try { v = await fn(); } catch { /* page still loading */ }
+    try { v = await fn(); } catch (e) { last = e.message; /* page still loading */ }
     if (v) return v;
-    if (Date.now() > end) throw new Error("timeout: " + what);
+    if (Date.now() > end) throw new Error("timeout: " + what + (last ? " (last error: " + last + ")" : ""));
     await wait(50);
   }
 }
@@ -285,14 +286,16 @@ async function main() {
   base = `http://127.0.0.1:${sport}`;
   const port = await freePort();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-"));
-  let proc, stderr = "";
+  let proc, stderr = "", attempt = 0;
   const launch = () => {
+    attempt++;
     const extra = process.platform === "linux" ? ["--no-sandbox", "--disable-dev-shm-usage"] : []; // CI containers
     proc = spawn(browser, [
-      "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...extra,
+      attempt > 1 ? "--headless" : "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...extra,
       `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank",
-    ], { stdio: ["ignore", "ignore", "pipe"] });
-    proc.stderr.on("data", (d) => { stderr = (stderr + d).slice(-1500); });
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    proc.on("exit", (code, sig) => { stderr += ` [browser exited: ${code ?? sig}]`; });
+    for (const o of [proc.stdout, proc.stderr]) o.on("data", (d) => { stderr = (stderr + d).slice(-1500); });
   };
   launch();
   const cleanup = async () => {
