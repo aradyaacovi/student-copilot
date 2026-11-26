@@ -160,6 +160,19 @@ test("workflow יומן רץ: מוחק את הטווח, כותב זמן תפוס
   const del = calls.find((c) => c.method === "DELETE");
   assert.ok(del.url.includes("calendar_busy") && del.url.includes("user_id=eq.u1") && del.url.includes("date=gte.2026-11-19"));
 });
+test("workflow יומן: הפלט והשורות שנכתבות כוללים מספרים ושעות בלבד, בלי כותרת, מיקום או משתתפים", async () => {
+  // גם אם Google היה מחזיר שדות פרטיים, אסור שיגיעו לפלט (שנשמר בלוג ציבורי) או לבסיס הנתונים
+  const secret = { summary: "פגישה עם הרופא הפרטי", location: "רחוב סודי 5", attendees: [{ email: "someone@example.com" }], description: "פרטים רגישים" };
+  const google = { token: { access_token: "t" }, events: { items: [gEvent("2026-11-19T07:00:00Z", "2026-11-19T08:00:00Z", secret)] } };
+  const { out, db } = await runWorkflow("5-calendar-sync.json", { extraEnv: GENV, google });
+  const shown = JSON.stringify(out) + JSON.stringify(db.calendar_busy);
+  for (const s of ["פגישה", "הרופא", "סודי", "someone@example.com", "רגישים"]) assert.ok(!shown.includes(s), s);
+  assert.deepEqual(Object.keys(out[0].json).sort(), ["busy", "events"]);
+  assert.deepEqual(Object.keys(db.calendar_busy[0]).sort(), ["date", "end_time", "start_time", "user_id"]);
+  // גם הודעת שגיאה מבקשה שנכשלה לא מכילה תוכן אירועים
+  const Gcal = require("../automations/lib/gcal.js");
+  await assert.rejects(Gcal.fetchEvents(async () => { throw new Error("GET https://www.googleapis.com/calendar/v3/calendars/primary/events → HTTP 500"); }, "t", "primary", "a", "b"), (e) => !/פגישה|רופא/.test(e.message));
+});
 test("workflow יומן: בלי הגדרות Google נכשל בהודעה ברורה", async () => {
   await assert.rejects(runWorkflow("5-calendar-sync.json", { extraEnv: { GOOGLE_CLIENT_ID: "x" } }), /חסר GOOGLE_CLIENT_SECRET/);
 });
