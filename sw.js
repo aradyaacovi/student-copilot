@@ -5,7 +5,7 @@
  * is never a reload behind. Images: cache first, since they do not change under the same name.
  * Supabase requests are never cached – a stale deadline is worse than an offline message.
  */
-const VERSION = "v12";
+const VERSION = "v14";
 const SHELL = "shell-" + VERSION;
 const RUNTIME = "runtime-" + VERSION;
 
