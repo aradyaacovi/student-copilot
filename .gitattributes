@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.ps1 text eol=crlf
+# Excel reads CSV most reliably with CRLF, and the exporter writes it that way
+*.csv text eol=crlf

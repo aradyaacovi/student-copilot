@@ -21,7 +21,8 @@
     "test:ui": "node tests/ui.smoke.test.js",
     "build:automations": "node automations/build.js",
     "automation": "node automations/run-local.js",
-    "shots": "node tools/shots.js"
+    "shots": "node tools/shots.js",
+    "export": "node tools/export-csv.js"
   },
   "dependencies": {},
   "devDependencies": {}
