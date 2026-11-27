@@ -714,6 +714,103 @@
     return /^(https?:\/\/|mailto:)/i.test(t) ? t : "";
   }
 
+  // ---------- tabular export (Excel / Power BI) ----------
+  // Pure row builders. Reading the data file and writing the CSVs lives in tools/export-csv.js.
+
+  /** 1-based semester week of a date, by whole weeks from the semester start. */
+  function semesterWeekOf(semester, dateStr) {
+    const d = startOfWeek(parseDate(dateStr));
+    const first = startOfWeek(parseDate(semester.start));
+    return Math.floor((d - first) / (7 * DAY_MS)) + 1;
+  }
+
+  function minutesOf(hhmm) {
+    const [h, m] = String(hhmm || "0:0").split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  /**
+   * Flat rows for analysis, one table per question:
+   *   sessions   – every lecture/tutorial occurrence, held or upcoming
+   *   deadlines  – every dated obligation
+   *   components – the grade weights per course
+   * `seen` is the watched map (`seenKey` format); without it the watched column is empty.
+   */
+  function exportRows(data, now, seen) {
+    const semester = data.semester;
+    const watched = seen || {};
+    const sessions = [];
+    const courseOf = {};
+    for (const course of data.courses || []) {
+      courseOf[course.id] = course;
+      const pace = coursePace(course, semester, now);
+      for (const type of Object.keys(pace)) {
+        const add = (o, status) => {
+          const mins = minutesOf(o.end) - minutesOf(o.start);
+          const key = seenKey(course.id, type, o.n);
+          sessions.push({
+            date: o.date,
+            weekday: DAY_NAMES[parseDate(o.date).getDay()],
+            weekday_num: parseDate(o.date).getDay(),
+            semester_week: semesterWeekOf(semester, o.date),
+            course: course.name,
+            course_code: course.code || "",
+            type,
+            occurrence: o.n,
+            start: o.start,
+            end: o.end,
+            hours: Math.round((mins / 60) * 100) / 100,
+            status,
+            makeup: o.extra ? "yes" : "no",
+            watched: status === "held" ? (watched[key] ? "yes" : "no") : "",
+            location: o.location || "",
+          });
+        };
+        pace[type].held.forEach((o) => add(o, "held"));
+        pace[type].upcoming.forEach((o) => add(o, "upcoming"));
+      }
+    }
+    sessions.sort((a, b) => (a.date + a.start + a.course).localeCompare(b.date + b.start + b.course));
+
+    const deadlines = (data.deadlines || []).map((d) => ({
+      date: d.date,
+      time: d.time || "",
+      semester_week: semesterWeekOf(semester, d.date),
+      course: (courseOf[d.courseId] || {}).name || d.courseId || "",
+      title: d.title || "",
+      kind: d.kind || "",
+      weight: d.weight == null ? "" : d.weight,
+      second_sitting: d.moedB ? "yes" : "no",
+    })).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+    const components = [];
+    for (const course of data.courses || []) {
+      for (const comp of course.components || []) {
+        components.push({
+          course: course.name,
+          course_code: course.code || "",
+          credits: course.credits == null ? "" : course.credits,
+          component: comp.name || comp.key,
+          type: comp.type || comp.key,
+          weight: comp.weight == null ? "" : comp.weight,
+        });
+      }
+    }
+
+    return { sessions, deadlines, components };
+  }
+
+  /** Rows (objects with identical keys) to CSV text. Excel wants CRLF; the BOM is the writer's job. */
+  function toCsv(rows) {
+    if (!rows || !rows.length) return "";
+    const cols = Object.keys(rows[0]);
+    const cell = (v) => {
+      const s = v == null ? "" : String(v);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\r\n") + "\r\n";
+  }
+
   const api = {
     escapeHtml, safeUrl,
     DAY_NAMES, SESSION_LABEL, TIERS,
@@ -724,6 +821,7 @@
     deadlineId, nextSessionAfter, applyRemote,
     estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
     syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes, adherence, dueBadge,
+    exportRows, toCsv, semesterWeekOf,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;

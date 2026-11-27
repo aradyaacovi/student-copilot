@@ -87,6 +87,92 @@ test("index.html: סקריפט Supabase מקובע לגרסה מדויקת, עם
   assert.ok(/integrity="sha384-[A-Za-z0-9+/]{64}"/.test(tag[0]), "יש integrity sha384");
   assert.ok(/crossorigin="anonymous"/.test(tag[0]));
 });
+// ייצוא לטבלה – השורות נגזרות מאותה לוגיקה שמציגה את מעקב הקצב
+const expNow = L.withTime("2026-11-17", "23:59");
+test("exportRows: מספר המפגשים שהתקיימו שווה למעקב הקצב, ולכל שורה שעות ושבוע", () => {
+  const t = L.exportRows(data, expNow, (data.demoState || {}).seen);
+  let held = 0, upcoming = 0;
+  for (const course of data.courses) {
+    const pace = L.coursePace(course, data.semester, expNow);
+    for (const type of Object.keys(pace)) {
+      held += pace[type].held.length;
+      upcoming += pace[type].upcoming.length;
+    }
+  }
+  assert.equal(t.sessions.filter((r) => r.status === "held").length, held);
+  assert.equal(t.sessions.filter((r) => r.status === "upcoming").length, upcoming);
+  assert.equal(t.sessions.length, held + upcoming);
+  // כל שורה: שעות חיוביות, שבוע סמסטר מ-1 ומעלה, ותאריך בפורמט אחד
+  for (const r of t.sessions) {
+    assert.ok(r.hours > 0 && r.hours <= 12, `שעות לא תקינות: ${r.hours}`);
+    assert.ok(r.semester_week >= 1, `שבוע לא תקין: ${r.semester_week}`);
+    assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(r.date));
+    assert.ok(["held", "upcoming"].includes(r.status));
+  }
+  // מפגש עתידי לא מסומן כנצפה, ושיעור שבוטל לא מופיע בכלל
+  assert.ok(t.sessions.filter((r) => r.status === "upcoming").every((r) => r.watched === ""));
+  assert.ok(t.sessions.every((r) => !(data.semester.noStudyDates || []).includes(r.date)));
+  // מטלות ורכיבי ציון: שורה לכל פריט, ושם הקורס מתורגם מהמזהה
+  assert.equal(t.deadlines.length, data.deadlines.length);
+  assert.equal(t.components.length, data.courses.reduce((s, c) => s + (c.components || []).length, 0));
+  for (const d of data.deadlines.filter((x) => x.courseId)) {
+    const course = data.courses.find((x) => x.id === d.courseId);
+    if (course) assert.ok(t.deadlines.some((r) => r.date === d.date && r.course === course.name), `${d.title}: שם הקורס לא תורגם`);
+  }
+  // סך המשקלים בכל קורס שהוגדרו לו רכיבים הוא 100 (קורס בלי רכיבים לא מייצר שורות)
+  for (const course of data.courses.filter((x) => (x.components || []).length)) {
+    const sum = t.components.filter((r) => r.course === course.name).reduce((s, r) => s + Number(r.weight), 0);
+    assert.equal(sum, 100, `${course.name}: סך המשקלים ${sum}`);
+  }
+});
+// סמסטר מינימלי לבדיקה, כדי שהתוצאה לא תשתנה עם הנתונים שנטענו
+const EXP_FIX = {
+  semester: { start: "2026-10-18", end: "2026-11-30", noStudyDates: ["2026-10-25"] },
+  courses: [{
+    id: "x", name: "קורס לדוגמה", code: "000-0", credits: 3,
+    components: [{ key: "hw", name: "תרגילים", type: "hw", weight: 40 }, { key: "exam", name: "מבחן", type: "exam", weight: 60 }],
+    sessions: [{ type: "lecture", day: 0, start: "10:00", end: "12:00", from: "2026-10-18", location: "בניין 1, חדר 101", cancelled: ["2026-11-01"], extra: [{ date: "2026-11-03", start: "16:00", end: "17:00" }] }],
+  }],
+  deadlines: [{ date: "2026-11-05", time: "23:55", courseId: "x", title: "תרגיל 1", weight: 5, kind: "submission" }],
+};
+test("exportRows: ביטול ויום בלי לימודים יורדים, השלמה מסומנת, ונצפה נקרא ממפתח האפליקציה", () => {
+  const t = L.exportRows(EXP_FIX, expNow, { [L.seenKey("x", "lecture", 1)]: true });
+  const dates = t.sessions.map((r) => r.date);
+  assert.deepEqual(dates, ["2026-10-18", "2026-11-03", "2026-11-08", "2026-11-15", "2026-11-22", "2026-11-29"]);
+  assert.equal(t.sessions.filter((r) => r.status === "held").length, 4);
+  assert.equal(t.sessions.filter((r) => r.status === "upcoming").length, 2);
+  // ההשלמה מסומנת כהשלמה, ושעה אחת בלבד
+  const makeup = t.sessions.find((r) => r.date === "2026-11-03");
+  assert.equal(makeup.makeup, "yes");
+  assert.equal(makeup.hours, 1);
+  // מצב הצפייה: רק המפגש הראשון סומן
+  assert.deepEqual(t.sessions.map((r) => r.watched), ["yes", "no", "no", "no", "", ""]);
+  assert.deepEqual(L.exportRows(EXP_FIX, expNow, null).sessions.map((r) => r.watched), ["no", "no", "no", "no", "", ""]);
+  // מספור המפגש, שבוע הסמסטר ושם היום
+  assert.deepEqual(t.sessions.map((r) => r.occurrence), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(t.sessions.map((r) => r.semester_week), [1, 3, 4, 5, 6, 7]);
+  assert.equal(t.sessions[0].weekday, "א׳");
+  assert.equal(t.sessions[0].location, "בניין 1, חדר 101");
+  // מטלה: שם הקורס במקום המזהה
+  assert.equal(t.deadlines[0].course, "קורס לדוגמה");
+  assert.equal(t.deadlines[0].semester_week, 3);
+  assert.deepEqual(t.components.map((r) => [r.component, r.weight]), [["תרגילים", 40], ["מבחן", 60]]);
+});
+test("toCsv: כותרות מהמפתחות, פסיק ומירכאות בתוך תא, ושורות בסיום שורה של אקסל", () => {
+  const csv = L.toCsv([{ a: 'x,y', b: 'he said "no"', c: "" }, { a: "1", b: null, c: 2 }]);
+  assert.equal(csv, 'a,b,c\r\n"x,y","he said ""no""",\r\n1,,2\r\n');
+  assert.equal(L.toCsv([]), "");
+  assert.equal(L.toCsv(null), "");
+  // התא עם הפסיק נשאר תא אחד בקריאה חזרה
+  assert.equal(csv.split("\r\n")[1].split('","')[0], '"x,y');
+});
+test("semesterWeekOf: שבוע ראשון הוא 1, וכל שבוע קלנדרי מתקדם באחד", () => {
+  const sem = { start: "2026-10-18" };
+  assert.equal(L.semesterWeekOf(sem, "2026-10-18"), 1);
+  assert.equal(L.semesterWeekOf(sem, "2026-10-24"), 1);
+  assert.equal(L.semesterWeekOf(sem, "2026-10-25"), 2);
+  assert.equal(L.semesterWeekOf(sem, "2026-11-17"), 5);
+});
 console.log(`${passed} בדיקות עברו בסך הכול`);
 
 // --- focus plan ---
