@@ -4,10 +4,15 @@ data/my-semester.js
 student-copilot-backup-*.json
 .DS_Store
 Thumbs.db
+summary_hw*.pdf
 # מפתחות וסודות
 js/config.js
 automations/.env
+automations/.env.*
+!automations/.env.example
 
 # הגדרות מקומיות של הסביבה
 .claude/
-summary_hw*.pdf
+
+# screenshots from failed UI smoke tests
+test-results/

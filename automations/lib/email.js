@@ -4,6 +4,19 @@
 const KEYWORDS = /(בוטל|ביטול|לא תתקיים|לא יתקיים|דחייה|נדחה|השלמה|הזזה|הוזז|שינוי חדר|שינוי מועד|מעבר לזום|בזום|מבחן|בוחן|הגשה|cancel|postpone|make-?up|rescheduled|moved|room change|zoom)/i;
 const SENDERS = /(bgu\.ac\.il|moodle)/i;
 
+/** הכתובת עצמה מתוך שדה "מאת". שם התצוגה נקבע בידי השולח ולכן לא נחשב. בלי כתובת אחת ברורה מחזיר "". */
+function senderAddress(from) {
+  const s = String(from || "").trim();
+  const angle = [...s.matchAll(/<([^<>]*)>/g)];
+  const cand = angle.length ? angle[angle.length - 1][1].trim() : s;
+  return /^[^\s@<>",;()]+@[^\s@<>",;()]+$/.test(cand) ? cand.toLowerCase() : "";
+}
+
+/** שולח מוסדי = הדומיין של הכתובת עצמה הוא bgu.ac.il או תת-דומיין שלו (כולל moodle.bgu.ac.il). */
+function isInstitutionalSender(from) {
+  return /@([a-z0-9-]+\.)*bgu\.ac\.il$/.test(senderAddress(from));
+}
+
 function emailFields(j) {
   const html = j.textHtml || j.html || "";
   const text = j.textPlain || j.text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -137,6 +150,9 @@ function interpret(result, e, data, L) {
     }
     if (it.type === "extra" && !date) date = it.new_date;
     let review = it.confidence === "low" || !hasType || !date;
+    // שינוי בלו"ז מוחל אוטומטית רק ממייל שהכתובת שלו מוסדית. אחרת (למשל שם תצוגה מוסדי על כתובת זרה) תמיד לאישור.
+    const trusted = isInstitutionalSender(e.from);
+    if (!trusted) review = true;
     if (it.is_my_group === "unknown" && sessionType !== "lecture") review = true;
     if (date && (it.type === "cancelled" || it.type === "moved") && hasType) {
       const s = course.sessions.find((x) => x.type === sessionType);
@@ -155,10 +171,70 @@ function interpret(result, e, data, L) {
       new_date: it.new_date || null, start_time: it.start_time || null, end_time: it.end_time || null,
       location: it.location || null, note: (it.note || "").slice(0, 200) + resolvedNote,
       source_ref: ref, confidence: it.confidence, status: review ? "needs_review" : "applied",
-      _inbox: { kind: review ? "review" : "alert", title: review ? `לאשר? ${title}` : title, body: `${it.note || result.summary}${resolvedNote}\n\n${src}`, dedupe_key: `mail-ch-${ref}-${i}` },
+      _inbox: { kind: review ? "review" : "alert", title: review ? `לאשר? ${title}` : title, body: `${it.note || result.summary}${resolvedNote}${trusted ? "" : "\n\nהשולח לא מזוהה כמוסדי (הכתובת עצמה לא מ-bgu.ac.il), לכן לא הוחל אוטומטית."}\n\n${src}`, dedupe_key: `mail-ch-${ref}-${i}` },
     });
   });
   return out;
 }
 
-module.exports = { emailFields, isCandidate, buildRequest, ANTHROPIC_HEADERS, readResponse, interpret, schema };
+/**
+ * חילוץ לפי כללים, בלי מודל ובלי עלות. מחזיר אובייקט באותה צורה כמו תשובת Claude,
+ * כך ש-interpret עובד עליו בלי שינוי. הזהירות כאן גבוהה: ספק = confidence "low" = לאישור באפליקציה.
+ */
+const RE_CANCEL = /(בוטל|מבוטל|ביטול|לא תתקיים|לא יתקיים|cancel)/i;
+const RE_EXTRA = /(השלמה|make-?up)/i;
+const RE_MOVED = /(הוזז|הזזה|נדחה|דחייה|שינוי מועד|שינוי חדר|מעבר לזום|בזום|rescheduled|moved|postpone|room change|zoom)/i;
+const RE_DEADLINE = /(הגשה|להגיש|בוחן|מבחן|deadline|due)/i;
+
+function findDates(text, mailDate) {
+  const out = [];
+  const re = /(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const d = +m[1], mo = +m[2];
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+    let y = m[3] ? +m[3] : mailDate.getFullYear();
+    if (y < 100) y += 2000;
+    if (!m[3] && new Date(y, mo - 1, d) < new Date(mailDate.getTime() - 60 * 86400000)) y += 1;
+    out.push(`${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+function ruleExtract(e, data, L) {
+  const text = `${e.subject}\n${e.text}`.slice(0, 4000);
+  const low = text.toLowerCase();
+  const hits = data.courses.filter((c) => [c.name, c.short, c.code].filter((x) => x && String(x).length >= 3).some((x) => low.includes(String(x).toLowerCase())));
+  const course = hits.length === 1 ? hits[0] : null;
+  let type = null;
+  if (RE_CANCEL.test(text)) type = "cancelled";
+  else if (RE_EXTRA.test(text)) type = "extra";
+  else if (RE_MOVED.test(text)) type = "moved";
+  else if (RE_DEADLINE.test(text)) type = /בוחן|מבחן/.test(text) ? "exam_change" : "deadline";
+  if (!type) return { relevant: false, summary: "", items: [] };
+  const session = /(תרגול|תרגיל|tutorial)/i.test(text) ? "tutorial" : /(מעבדה|סדנה|workshop)/i.test(text) ? "workshop" : /(הרצאה|lecture)/i.test(text) ? "lecture" : "none";
+  const dates = findDates(text, e.date);
+  const times = [...text.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2]}`);
+  const zoom = /(זום|zoom)/i.test(text);
+  const sure = !!(course && dates.length && type);
+  return {
+    relevant: true,
+    summary: e.subject.slice(0, 120),
+    items: [{
+      course_id: course ? course.id : "unknown",
+      type,
+      session_type: session,
+      date: dates[0] || "",
+      new_date: type === "moved" || type === "extra" ? (dates[1] || "") : "",
+      start_time: times[0] || "",
+      end_time: times[1] || "",
+      location: zoom ? "זום" : "",
+      title: type === "deadline" || type === "exam_change" ? e.subject.slice(0, 80) : "",
+      is_my_group: "unknown",
+      confidence: sure ? "high" : "low",
+      note: "זוהה אוטומטית לפי כללים (בלי מודל). כדאי לוודא מול המייל המקורי.",
+    }],
+  };
+}
+
+module.exports = { emailFields, isCandidate, buildRequest, ANTHROPIC_HEADERS, readResponse, interpret, senderAddress, isInstitutionalSender, schema, ruleExtract };

@@ -79,6 +79,14 @@ test("weekLoad + semesterWeek", () => {
   assert.equal(w.find((x) => x.current).load, 20);
   assert.equal(L.semesterWeek(sem, new Date(2026, 10, 16)).n, 5);
 });
+test("index.html: סקריפט Supabase מקובע לגרסה מדויקת, עם SRI ו-crossorigin", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  const tag = html.match(/<script[^>]*jsdelivr[^>]*supabase-js[^>]*>/);
+  assert.ok(tag, "נמצא תג הסקריפט");
+  assert.ok(/supabase-js@\d+\.\d+\.\d+\/dist\//.test(tag[0]), "גרסה מדויקת, לא טווח");
+  assert.ok(/integrity="sha384-[A-Za-z0-9+/]{64}"/.test(tag[0]), "יש integrity sha384");
+  assert.ok(/crossorigin="anonymous"/.test(tag[0]));
+});
 console.log(`${passed} בדיקות עברו בסך הכול`);
 
 // --- focus plan ---
@@ -143,5 +151,89 @@ test("busyMinutes: מאחד קטעים חופפים וסמוכים וגוזר ל
   assert.equal(L.busyMinutes([[60, 120], [300, 360]], 0, 600), 120);
   assert.equal(L.busyMinutes([[0, 600]], 100, 200), 100);
   assert.equal(L.busyMinutes([], 0, 600), 0);
+});
+const ev = (s, e, extra) => ({ start: { dateTime: s }, end: { dateTime: e }, ...extra });
+test("יומן: אירוע רגיל הופך לקטע תפוס בשעון ישראל (קיץ ואחר כך חורף)", () => {
+  // 24.10.2026 עוד שעון קיץ (UTC+3), 26.10.2026 כבר שעון חורף (UTC+2)
+  assert.deepEqual(L.calendarBusyForDay([ev("2026-10-24T09:00:00Z", "2026-10-24T10:30:00Z")], "2026-10-24"), [{ start: "12:00", end: "13:30" }]);
+  assert.deepEqual(L.calendarBusyForDay([ev("2026-10-26T09:00:00Z", "2026-10-26T10:30:00Z")], "2026-10-26"), [{ start: "11:00", end: "12:30" }]);
+});
+test("יומן: מדלגים על ביטול, 'פנוי', יום שלם ואירוע שהאפליקציה כתבה", () => {
+  const day = "2026-11-26";
+  const t = ["2026-11-26T08:00:00Z", "2026-11-26T09:00:00Z"];
+  assert.equal(L.calendarBusyForDay([ev(...t, { status: "cancelled" })], day).length, 0);
+  assert.equal(L.calendarBusyForDay([ev(...t, { transparency: "transparent" })], day).length, 0);
+  assert.equal(L.calendarBusyForDay([{ start: { date: day }, end: { date: "2026-11-27" } }], day).length, 0);
+  assert.equal(L.calendarBusyForDay([ev(...t, { extendedProperties: { private: { copilot: "1" } } })], day).length, 0);
+  assert.equal(L.calendarBusyForDay([ev(...t)], day).length, 1);
+  assert.equal(L.calendarBusyForDay(null, day).length, 0);
+});
+test("יומן: אירוע שחוצה חצות נחתך ליום המבוקש", () => {
+  const e = [ev("2026-11-26T20:00:00Z", "2026-11-26T23:30:00Z")]; // 22:00 עד 01:30 למחרת
+  assert.deepEqual(L.calendarBusyForDay(e, "2026-11-26"), [{ start: "22:00", end: "24:00" }]);
+  assert.deepEqual(L.calendarBusyForDay(e, "2026-11-27"), [{ start: "00:00", end: "01:30" }]);
+  assert.equal(L.calendarBusyForDay(e, "2026-11-28").length, 0);
+});
+test("יומן: אירוע שמשקף הרצאה מוקלטת לא תופס זמן, אירוע אחר כן", () => {
+  const sessions = [{ start: "10:00", end: "12:00", session: { recorded: true } }, { start: "14:00", end: "16:00", session: {} }];
+  const busy = [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "16:00" }, { start: "12:30", end: "13:00" }];
+  assert.deepEqual(L.dropSessionEchoes(busy, sessions), [{ start: "14:00", end: "16:00" }, { start: "12:30", end: "13:00" }]);
+});
+test("יומן: השעות הפנויות יורדות לפי האירועים, בלי ספירה כפולה עם שיעור קיים", () => {
+  const now = new Date(2026, 10, 26, 8, 0);
+  const cls = [{ start: "10:00", end: "12:00", session: {} }];
+  const busy = L.calendarBusyForDay([ev("2026-11-26T08:00:00Z", "2026-11-26T09:00:00Z")], "2026-11-26"); // 10:00 עד 11:00 בישראל
+  assert.equal(L.freeHoursToday(cls, now, "19:30", 12, busy), L.freeHoursToday(cls, now, "19:30", 12)); // האירוע בתוך השיעור
+  const other = L.calendarBusyForDay([ev("2026-11-26T12:00:00Z", "2026-11-26T14:00:00Z")], "2026-11-26"); // 14:00 עד 16:00
+  assert.equal(L.freeHoursToday([], now, "19:30", 12) - L.freeHoursToday([], now, "19:30", 12, other), 2);
+});
+test("dueBadge: באיחור, היום, מחר ועוד יומיים. מעבר לכך אין תווית", () => {
+  assert.deepEqual(L.dueBadge(-3), { text: "באיחור של 3 ימים", cls: "now" });
+  assert.equal(L.dueBadge(-1).text, "באיחור של יום");
+  assert.deepEqual(L.dueBadge(0), { text: "היום", cls: "now" });
+  assert.deepEqual(L.dueBadge(1), { text: "מחר", cls: "soon" });
+  assert.equal(L.dueBadge(2).text, "עוד יומיים");
+  for (const x of [3, 30, null, undefined, NaN]) assert.equal(L.dueBadge(x), null);
+});
+test("adherence: סופרת רק ימים שעברו, בחלון, ומשימה שהושלמה אחר כך נחשבת", () => {
+  const now = new Date(2026, 10, 26, 9, 0);
+  const log = { "2026-11-26": ["x", "y"], "2026-11-25": ["a", "b", "c", "d"], "2026-11-24": ["e"], "2026-11-20": [], "2026-10-01": ["old"] };
+  const done = new Set(["a", "b", "c", "e", "x"]);
+  const r = L.adherence(log, (id) => done.has(id), now, 14);
+  assert.deepEqual(r, { days: 2, planned: 5, done: 4, pct: 80 }); // היום, יום ריק וחודש ישן לא נספרים
+  assert.deepEqual(L.adherence({}, () => true, now), { days: 0, planned: 0, done: 0, pct: null });
+  assert.equal(L.adherence(null, () => true, now).pct, null);
+});
+test("syncHealth: סנכרון יומן נחשב ישן אחרי 3 שעות", () => {
+  const now = new Date("2026-11-26T12:00:00Z");
+  const row = (h) => ({ source: "5-calendar-sync", last_success: new Date(now - h * 3600000).toISOString(), failures: 0 });
+  assert.equal(L.syncHealth([row(2)], now).status, "ok");
+  const r = L.syncHealth([row(5)], now);
+  assert.equal(r.status, "stale");
+  assert.ok(r.text.includes("סנכרון יומן"));
+});
+test("syncHealth: תקין, ישן, נכשל, וללא נתונים", () => {
+  const now = new Date("2026-11-26T12:00:00Z");
+  const ago = (h) => new Date(now - h * 3600000).toISOString();
+  assert.equal(L.syncHealth([], now).status, "none");
+  assert.equal(L.syncHealth(null, now).status, "none");
+  assert.equal(L.syncHealth([{ source: "1-moodle-sync", last_success: ago(3), failures: 0 }], now).status, "ok");
+  // הפער הלילי הרגיל של סנכרון מודל (9 שעות) לא נחשב תקלה
+  assert.equal(L.syncHealth([{ source: "1-moodle-sync", last_success: ago(10), failures: 0 }], now).status, "ok");
+  const stale = L.syncHealth([{ source: "1-moodle-sync", last_success: ago(14), failures: 0 }], now);
+  assert.equal(stale.status, "stale");
+  assert.ok(stale.text.includes("סנכרון מודל") && stale.text.includes("14"));
+  const failing = L.syncHealth([{ source: "3-briefs", last_success: ago(2), failures: 2, last_error: "x" }, { source: "1-moodle-sync", last_success: ago(30), failures: 0 }], now);
+  assert.equal(failing.status, "failing");
+  assert.equal(L.syncHealth([{ source: "unknown", last_success: ago(500), failures: 5 }], now).status, "none");
+  assert.ok(L.syncHealth([{ source: "4-reminders", last_success: null, failures: 0 }], now).text.includes("אף פעם"));
+});
+test("escapeHtml and safeUrl block markup and javascript: links", () => {
+  assert.equal(L.escapeHtml(`<img src=x onerror="a()">'&`), "&lt;img src=x onerror=&quot;a()&quot;&gt;&#39;&amp;");
+  assert.equal(L.escapeHtml(null), "");
+  assert.equal(L.safeUrl("https://moodle.bgu.ac.il/x?a=1"), "https://moodle.bgu.ac.il/x?a=1");
+  assert.equal(L.safeUrl("  HTTP://a.b"), "HTTP://a.b");
+  assert.equal(L.safeUrl("mailto:a@b.c"), "mailto:a@b.c");
+  for (const bad of ["javascript:alert(1)", " JaVaScRiPt:alert(1)", "data:text/html,<script>", "//evil.com", "vbscript:x", "", null, undefined]) assert.equal(L.safeUrl(bad), "");
 });
 console.log(`${passed} בדיקות עברו בסך הכול`);

@@ -25,7 +25,7 @@
   let source = DEMO ? "sample" : state.dataOverride ? "import" : window.SEMESTER_DATA ? "mine" : "sample";
   let baseData = DEMO ? window.SAMPLE_DATA : state.dataOverride || window.SEMESTER_DATA || window.SAMPLE_DATA;
   let data, courses, byId, previous;
-  const remote = { events: [], changes: [], inbox: [] };
+  const remote = { events: [], changes: [], inbox: [], sync: [], busy: [] };
   function setData() {
     data = L.applyRemote(baseData, remote);
     courses = data.courses;
@@ -50,17 +50,23 @@
   let summaryCourse = courses[0] && courses[0].id;
 
   // ---------- helpers ----------
-  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const esc = L.escapeHtml;
   const cname = (id) => (byId[id] ? byId[id].short || byId[id].name : "");
   const ccolor = (id) => (byId[id] ? byId[id].color : "#94a3b8");
-  const chip = (id) => (id ? `<button class="chip" data-course="${id}" style="--c:${ccolor(id)}" title="לדף הקורס">${esc(cname(id))}</button>` : "");
+  const chip = (id) => (id ? `<button class="chip" data-course="${esc(id)}" style="--c:${esc(ccolor(id))}" title="לדף הקורס">${esc(cname(id))}</button>` : "");
   let toastTimer;
-  const toast = (msg) => {
+  // a reversible action says so: the toast carries an undo button (no confirm dialogs)
+  let undoSnap = null;
+  const toast = (msg, snap) => {
     let el = document.getElementById("toast");
     if (!el) { el = document.createElement("div"); el.id = "toast"; document.body.appendChild(el); }
-    el.textContent = msg; el.classList.add("show");
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 1600);
+    undoSnap = snap || null;
+    el.textContent = msg;
+    if (snap) { const b = document.createElement("button"); b.className = "undo"; b.dataset.undo = "1"; b.textContent = "ביטול"; el.append(" ", b); }
+    el.classList.toggle("act", !!snap); el.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), snap ? 5000 : 1600);
   };
+  const snapState = () => JSON.stringify({ seen: state.seen, reviewed: state.reviewed, snooze: state.snooze, done: state.done });
   const applyTheme = () => {
     const dark = state.theme === "dark" || (state.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -108,7 +114,7 @@
   // ---------- cloud (Supabase) ----------
   const cfg = window.COPILOT_CONFIG || {};
   const cloud = { client: null, user: null, status: "off", error: "" };
-  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "previous", "target", "assume", "reviews"];
+  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "previous", "target", "assume", "reviews", "log"];
 
   async function cloudInit() {
     if (DEMO || !cfg.supabaseUrl || !cfg.supabaseAnonKey) return;
@@ -123,12 +129,14 @@
 
   async function cloudPull() {
     const c = cloud.client;
-    const [sd, us, ev, ch, ib] = await Promise.all([
+    const [sd, us, ev, ch, ib, sy, cb] = await Promise.all([
       c.from("semester_data").select("data,updated_at").maybeSingle(),
       c.from("user_state").select("state,updated_at").maybeSingle(),
       c.from("events").select("*").order("date"),
       c.from("schedule_changes").select("*").neq("status", "rejected"),
       c.from("inbox").select("*").order("created_at", { ascending: false }).limit(40),
+      c.from("sync_state").select("*"), // אם הטבלה עוד לא נוצרה: מתעלמים בשקט ולא מציגים חיווי
+      c.from("calendar_busy").select("date,start_time,end_time").gte("date", todayIso),
     ]);
     const err = [sd, us, ev, ch, ib].find((r) => r.error);
     if (err) { cloud.status = "error"; cloud.error = err.error.message; return; }
@@ -139,6 +147,8 @@
     remote.changes = (ch.data || []).filter((x) => x.status === "applied");
     remote.review = (ch.data || []).filter((x) => x.status === "needs_review");
     remote.inbox = ib.data || [];
+    remote.sync = sy.error ? [] : sy.data || [];
+    remote.busy = cb.error ? [] : cb.data || [];
     setData();
   }
 
@@ -185,9 +195,11 @@
     const items = remote.inbox.slice(0, 8);
     const unread = remote.inbox.filter((m) => !m.read).length;
     const reviewIds = new Set((remote.review || []).map((r) => r.id));
+    const health = L.syncHealth(remote.sync, now);
     return `<div class="card span inbox">
       <div class="row"><h3>📬 עדכונים מהאוטומציות ${unread ? `<span class="badge now">${unread} חדשים</span>` : ""}</h3><span class="spacer"></span>
         <button class="link small" data-cloud="refresh">רענון</button> ${unread ? `<button class="link small" data-cloud="readAll">סימון הכול כנקרא</button>` : ""}</div>
+      ${health.status === "stale" || health.status === "failing" ? `<div class="warn small">⚠️ ${esc(health.text)}</div>` : ""}
       ${items.length ? items.map((m) => `<details class="msg ${m.read ? "" : "unread"}" ${!m.read && (m.kind === "brief" || m.kind === "review") ? "open" : ""}>
         <summary>${inboxIcon[m.kind] || "•"} <b>${esc(m.title)}</b> <span class="muted small">${new Date(m.created_at).toLocaleString("he-IL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</span></summary>
         <div class="msg-body">${esc(m.body)}</div>
@@ -248,18 +260,41 @@
   }
   function currentPlan() {
     const todays = L.sessionsOnDate(courses, data.semester, todayIso);
-    const capacity = L.freeHoursToday(todays, now, data.semester.dayEnd, Number(state.dailyHours) || 4);
-    return { todays, plan: L.buildPlan(planItems(), now, { capacity, hoursPerDay: Math.max(1, (Number(state.dailyHours) || 4) - 1) }) };
+    const capacity = L.freeHoursToday(todays, now, data.semester.dayEnd, Number(state.dailyHours) || 4, calendarBusyToday(todays));
+    const plan = L.buildPlan(planItems(), now, { capacity, hoursPerDay: Math.max(1, (Number(state.dailyHours) || 4) - 1) });
+    logTodaysPlan(plan);
+    return { todays, plan };
   }
+  // זמן תפוס מהיומן להיום. אם סנכרון היומן ישן או נכשל, מתעלמים ממנו וחוזרים להנחה הקודמת במקום להסתמך על מידע לא עדכני.
+  function calendarBusyToday(todays) {
+    const cal = L.syncHealth(remote.sync, now).items.find((i) => i.source === "5-calendar-sync");
+    if (!cal || cal.status !== "ok") return [];
+    const busy = remote.busy.filter((r) => r.date === todayIso).map((r) => ({ start: r.start_time, end: r.end_time }));
+    return L.dropSessionEchoes(busy, todays);
+  }
+  // מצלמים את תוכנית הבוקר פעם אחת ביום, כדי שאפשר יהיה למדוד כמה ממנה בוצע. לא בדמו ולא בתאריך מקובע.
+  function logTodaysPlan(plan) {
+    const q = new URLSearchParams(location.search);
+    if (DEMO || q.has("today") || q.has("now") || !plan.today.length) return;
+    state.log = state.log || {};
+    if (state.log[todayIso]) return;
+    state.log[todayIso] = plan.today.map((i) => i.id);
+    const keep = L.iso(L.addDays(now, -60));
+    for (const d of Object.keys(state.log)) if (d < keep) delete state.log[d];
+    save();
+  }
+  const planItemDone = (id) => id.startsWith("pace|") ? !!state.seen[id.slice(5)] : id.startsWith("rev|") ? !!state.reviewed[id.slice(4)] : !!state.done[id];
   const KIND_ICON = { submission: "📌", quiz: "✏️", exam: "📝", catchup: "▶️", review: "🔁", custom: "•", other: "•" };
   const hoursText = (h) => (h >= 1 ? `${h % 1 ? h.toFixed(1) : h} ש׳` : `${Math.round(h * 60)} דק׳`);
   const doneLabel = (it) => (it.kind === "exam" ? "למדתי היום" : it.kind === "catchup" ? "ראיתי" : "סיימתי");
 
   function planRow(it, withHours) {
+    const badge = L.dueBadge(it.daysLeft);
+    const meta = [badge && it.daysLeft < 0 ? "" : it.reason, it.weight ? `${it.weight}%` : "", it.snoozed ? "נדחה" : ""].filter(Boolean).map(esc).join(" · ");
     return `<div class="task" style="--c:${ccolor(it.courseId)}">
       <span class="kind">${KIND_ICON[it.kind] || "•"}</span>
-      <div style="flex:1"><div class="t">${chip(it.courseId)} ${esc(it.title)}</div>
-        <div class="meta">${esc(it.reason)}${it.weight ? ` · ${it.weight}%` : ""}${it.snoozed ? " · נדחה" : ""}</div></div>
+      <div style="flex:1"><div class="t">${chip(it.courseId)} ${esc(it.title)} ${badge ? `<span class="badge ${badge.cls}">${esc(badge.text)}</span>` : ""}</div>
+        <div class="meta">${meta}</div></div>
       ${withHours ? `<span class="hrs">${hoursText(it.hours)}</span>` : ""}
       <button class="btn ghost sm" data-plandone="${esc(it.id)}" title="${doneLabel(it)}">✓</button>
       ${withHours ? `<button class="link sm" data-snooze="${esc(it.id)}" title="לדחות למחר">⏭</button>` : ""}
@@ -320,7 +355,7 @@
           </li>`).join("")}</ol>` : `<p class="empty small">אין עוד שיעורים או משימות היום.</p>`}
         <div class="focus-nums">
           <div><b class="${behind ? "hot" : ""}">${behind}</b><span>לא נראו</span></div>
-          <div><b>${nextDl ? L.daysUntil(nextDl.date, now) : "—"}</b><span>${nextDl ? "ימים ל" + cname(nextDl.courseId) : "אין הגשה"}</span></div>
+          <div><b>${nextDl ? L.daysUntil(nextDl.date, now) : "—"}</b><span>${nextDl ? (L.daysUntil(nextDl.date, now) === 1 ? "יום ל" : "ימים ל") + cname(nextDl.courseId) : "אין הגשה"}</span></div>
           ${plan.overload ? `<div><b class="hot">+${hoursText(plan.overload)}</b><span>מעבר לזמן</span></div>` : ""}
         </div>
       </div>`;
@@ -557,7 +592,7 @@
           ${(c.staff || []).length ? `<div class="small">👥 ${c.staff.map(esc).join(" · ")}</div>` : ""}
           <div class="small">🕑 ${(c.sessions || []).map((s) => `${L.SESSION_LABEL[s.type]} ${L.DAY_NAMES[s.day]} ${s.start}–${s.end} (${esc(s.location || "")})`).join(" · ")}</div>
           ${(c.notes || []).length ? `<ul class="small">${c.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
-          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
+          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(L.safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
         </div>`).join("")}</div>`;
   }
 
@@ -576,7 +611,7 @@
             <div class="summary-entry" style="--c:${c.color}">
               <div class="row"><b>${esc(s.session || "")}${s.title ? " – " + esc(s.title) : ""}</b>
                 <span class="muted small">${s.date ? L.fmt(s.date) : ""}</span><span class="spacer"></span>
-                ${s.link ? `<a class="small" href="${esc(s.link)}" target="_blank" rel="noopener">לסיכום המלא</a>` : ""}
+                ${s.link && L.safeUrl(s.link) ? `<a class="small" href="${esc(L.safeUrl(s.link))}" target="_blank" rel="noopener">לסיכום המלא</a>` : ""}
                 ${s.fromData ? "" : `<button class="link small" data-delnote="${i - (c.summaries || []).length}">מחיקה</button>`}</div>
               <ul>${(s.points || []).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
             </div>`).join("") : `<div class="empty">עוד אין סיכומים בקורס הזה.</div>`}
@@ -626,11 +661,11 @@
           <div class="small">${c.components.map((k) => `${esc(k.name)} <b>${k.weight}%</b>`).join(" · ") || "מרכיבי הציון לא ידועים"}</div>
           <ul class="small">${(c.conditions || []).concat(c.notes || []).map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
           ${open.length ? `<div class="small warn">❓ ${open.map((o) => esc(o.text)).join(" · ")}</div>` : ""}
-          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
+          ${(c.links || []).length ? `<div class="row small">🔗 ${c.links.map((l) => `<a href="${esc(L.safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(" · ")}</div>` : ""}
         </div>
         <div class="card"><h3>📖 הסיכום המצטבר</h3>
           ${notes.length ? notes.map((s) => `<div class="summary-entry" style="--c:${c.color}"><b>${esc(s.session || "")}${s.title ? " – " + esc(s.title) : ""}</b>
-            ${s.link ? ` <a class="small" href="${esc(s.link)}" target="_blank" rel="noopener">לסיכום</a>` : ""}<ul>${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`).join("") : `<div class="empty">עוד אין סיכומים.</div>`}
+            ${s.link && L.safeUrl(s.link) ? ` <a class="small" href="${esc(L.safeUrl(s.link))}" target="_blank" rel="noopener">לסיכום</a>` : ""}<ul>${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`).join("") : `<div class="empty">עוד אין סיכומים.</div>`}
           <button class="link" data-sumcourse="${c.id}" data-tab="summaries">להוסיף סיכום ←</button>
         </div>
       </div>`;
@@ -651,11 +686,22 @@
     return `<div class="card"><h3>📱 האפליקציה</h3>${body}</div>`;
   }
 
+  // מדד הצלחה: כמה ממשימות הבוקר בוצעו בשבועיים האחרונים. יעד ראשוני: 70 אחוז ומעלה.
+  function adherenceCard() {
+    const a = L.adherence(state.log, planItemDone, now, 14);
+    const text = a.days < 3
+      ? "עוד אין מספיק ימים למדידה. המערכת שומרת את תוכנית הבוקר כל יום, והמספר יופיע אחרי שלושה ימים."
+      : `<b>${a.pct}%</b> ממשימות הבוקר בוצעו (${a.done} מתוך ${a.planned}, ב-${a.days} ימים). היעד: 70% ומעלה.`;
+    return `<div class="card"><details><summary><h3 style="display:inline">📈 ביצוע התוכנית</h3></summary><p class="small">${text}</p>
+      <p class="small muted">נספרים ימים שעברו בלבד. משימה שהושלמה בדיעבד נחשבת. הנתונים נשמרים רק אצלך.</p></details></div>`;
+  }
+
   function viewSettings() {
     const srcText = { sample: "נתוני הדגמה (data/sample-semester.js)", mine: "הקובץ שלך (data/my-semester.js)", import: "נתונים שייבאת לדפדפן הזה", cloud: "הענן (Supabase)" }[source];
     return `<div class="grid">
       ${appCard()}
       ${cloudCard()}
+      ${adherenceCard()}
       <div class="card"><h3>💾 גיבוי ההתקדמות שלך</h3>
         <p class="small muted">מה שסימנת (ראיתי / בוצע), ציונים, משימות וסיכומים שהוספת נשמרים רק בדפדפן. כדאי לגבות מדי פעם.</p>
         <div class="row"><button class="btn" data-action="export">ייצוא גיבוי</button>
@@ -679,6 +725,7 @@
   function render() {
     if (!VIEWS[state.tab]) state.tab = "today";
     applyTheme();
+    document.body.dataset.view = state.tab;
     const unread = remote.inbox.filter((m) => !m.read).length;
     document.getElementById("tabs").innerHTML = Object.entries(VIEWS).filter(([, v]) => !v.hidden)
       .map(([k, v]) => `<button data-tab="${k}" class="${k === state.tab || VIEWS[state.tab].parent === k ? "active" : ""}" title="${v.title}">
@@ -699,19 +746,23 @@
   }
 
   document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-undo]") && undoSnap) {
+      Object.assign(state, JSON.parse(undoSnap)); undoSnap = null; save(); toast("בוטל");
+      return render();
+    }
     const cb = e.target.closest("[data-cloud]");
     if (cb) return cloudAction(cb.dataset.cloud, cb);
     const t = e.target.closest("[data-plandone],[data-snooze],[data-seenall],[data-course],[data-tab],[data-week],[data-action],[data-deltask],[data-sumcourse],[data-delnote]");
     if (!t) return;
     if (t.dataset.plandone) {
-      const id = t.dataset.plandone;
+      const id = t.dataset.plandone, snap = snapState();
       if (id.startsWith("pace|")) state.seen[id.slice(5)] = todayIso;
       else if (id.startsWith("rev|")) state.reviewed[id.slice(4)] = true;
       else if ((planItems().find((i) => i.id === id) || {}).kind === "exam") state.snooze[id] = L.iso(L.addDays(now, 1));
       else state.done[id] = true;
-      save(); toast("יפה! ✓");
+      save(); toast("יפה! ✓", snap);
     }
-    else if (t.dataset.snooze) { state.snooze[t.dataset.snooze] = L.iso(L.addDays(now, 1)); save(); toast("נדחה למחר"); }
+    else if (t.dataset.snooze) { const snap = snapState(); state.snooze[t.dataset.snooze] = L.iso(L.addDays(now, 1)); save(); toast("נדחה למחר", snap); }
     else if (t.dataset.seenall) {
       const c = byId[t.dataset.seenall];
       for (const it of L.paceStatus(c, data.semester, now, state.seen).items) if (!it.seen) state.seen[it.key] = true;

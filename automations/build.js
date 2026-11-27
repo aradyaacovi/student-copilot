@@ -12,6 +12,7 @@ const PRELUDE = [
   wrap("Moodle", read("lib/moodle.js")),
   wrap("Email", read("lib/email.js")),
   wrap("Briefs", read("lib/briefs.js")),
+  wrap("Gcal", read("lib/gcal.js")),
   `const ENV = { url: $env.SUPABASE_URL, key: $env.SUPABASE_SERVICE_KEY, user: $env.USER_ID };
 if (!ENV.url || !ENV.key || !ENV.user) throw new Error("חסרים SUPABASE_URL / SUPABASE_SERVICE_KEY / USER_ID ב-automations/.env");
 const http = (o) => this.helpers.httpRequest(o);
@@ -33,25 +34,29 @@ await supa.upsert("events", withUser(found.map((e) => ({ ...e, updated_at: new D
 const fresh = found.filter((e) => !known.has(e.external_id));
 const cn = (id) => { const c = ctx.base.courses.find((x) => x.id === id); return c ? c.short : "לא זוהה קורס"; };
 await postInbox(fresh.map((e) => ({ kind: "alert", title: \`חדש במודל: \${cn(e.course_id)} – \${e.title}\`, body: \`\${L.fmtLong(e.date)}\${e.time ? " " + e.time : ""}\${e.url ? "\\n" + e.url : ""}\`, dedupe_key: \`moodle-\${e.external_id}\` })));
-return [{ json: { found: found.length, new: fresh.length, unmatched: found.filter((e) => !e.course_id).map((e) => e.title) } }];`,
+return [{ json: { found: found.length, new: fresh.length, unmatched: found.filter((e) => !e.course_id).length } }];`,
 
   email: `
-if (!$env.ANTHROPIC_API_KEY) throw new Error("חסר ANTHROPIC_API_KEY ב-automations/.env");
 const ctx = await Common.loadContext(supa, ENV.user, L);
 const report = [];
 for (const item of $input.all()) {
   const e = Email.emailFields(item.json);
   if (!e.subject && !e.text) continue;
-  if (!Email.isCandidate(e)) { report.push({ subject: e.subject, skipped: "לא רלוונטי" }); continue; }
-  let res;
-  try {
-    res = await http({ method: "POST", url: "https://api.anthropic.com/v1/messages", headers: Email.ANTHROPIC_HEADERS($env.ANTHROPIC_API_KEY), body: Email.buildRequest(e, ctx.data, L), json: true, timeout: 180000 });
-  } catch (err) {
-    await postInbox([{ kind: "alert", title: "לא הצלחתי לנתח מייל", body: \`\${e.subject}\\n\${err.message}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]);
-    report.push({ subject: e.subject, error: err.message }); continue;
+  if (!Email.isCandidate(e)) { report.push({ n: report.length + 1, skipped: "לא רלוונטי" }); continue; }
+  let result, reason;
+  if ($env.ANTHROPIC_API_KEY) {
+    let res;
+    try {
+      res = await http({ method: "POST", url: "https://api.anthropic.com/v1/messages", headers: Email.ANTHROPIC_HEADERS($env.ANTHROPIC_API_KEY), body: Email.buildRequest(e, ctx.data, L), json: true, timeout: 180000 });
+    } catch (err) {
+      await postInbox([{ kind: "alert", title: "לא הצלחתי לנתח מייל", body: \`\${e.subject}\\n\${err.message}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]);
+      report.push({ n: report.length + 1, error: err.message }); continue;
+    }
+    ({ result, reason } = Email.readResponse(res));
+  } else {
+    result = Email.ruleExtract(e, ctx.data, L); // בלי מפתח: חילוץ לפי כללים, בלי מודל ובלי עלות
   }
-  const { result, reason } = Email.readResponse(res);
-  if (!result) { await postInbox([{ kind: "alert", title: "מייל לבדיקה ידנית", body: \`\${e.subject}\\n\${reason}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]); report.push({ subject: e.subject, error: reason }); continue; }
+  if (!result) { await postInbox([{ kind: "alert", title: "מייל לבדיקה ידנית", body: \`\${e.subject}\\n\${reason}\`, dedupe_key: \`mail-err-\${e.messageId}\` }]); report.push({ n: report.length + 1, error: reason }); continue; }
   const acts = Email.interpret(result, e, ctx.data, L);
   await supa.upsert("events", withUser(acts.events), "user_id,source,external_id", "merge");
   for (const ch of acts.changes) {
@@ -60,7 +65,7 @@ for (const item of $input.all()) {
     if (ins.length) await postInbox([{ ..._inbox, ref_id: ins[0].id }]);
   }
   await postInbox(acts.inbox);
-  report.push({ subject: e.subject, relevant: result.relevant, changes: acts.changes.length, events: acts.events.length });
+  report.push({ n: report.length + 1, relevant: result.relevant, changes: acts.changes.length, events: acts.events.length });
 }
 return report.length ? report.map((r) => ({ json: r })) : [{ json: { empty: true } }];`,
 
@@ -70,6 +75,20 @@ const items = [Briefs.dailyBrief(ctx, L, now)];
 if (now.getDay() === 0) items.push(Briefs.weeklyBrief(ctx, L, now));
 const saved = await postInbox(items);
 return [{ json: { saved: saved.length, titles: items.map((i) => i.title) } }];`,
+
+  calendar: `
+for (const k of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]) if (!$env[k]) throw new Error("חסר " + k);
+const DAYS = 14;
+const token = await Gcal.accessToken(http, $env);
+const timeMin = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+const timeMax = new Date(now.getTime() + (DAYS + 1) * 24 * 3600 * 1000).toISOString();
+const events = await Gcal.fetchEvents(http, token, $env.GOOGLE_CALENDAR_ID || "primary", timeMin, timeMax);
+const today = L.iso(now);
+const rows = Gcal.busyRows(events, today, DAYS, L);
+// מחליפים את הטווח כולו: קודם מוחקים מהיום והלאה, ואז כותבים את מה שנקרא עכשיו
+await supa.remove("calendar_busy", \`user_id=eq.\${ENV.user}&date=gte.\${today}\`);
+await supa.upsert("calendar_busy", withUser(rows), "user_id,date,start_time,end_time", "ignore");
+return [{ json: { events: events.length, busy: rows.length } }];`,
 
   reminders: `
 const ctx = await Common.loadContext(supa, ENV.user, L);
@@ -105,6 +124,11 @@ const workflows = {
     name: "Copilot · תדריך בוקר (וביום א׳ גם שבועי)",
     nodes: [cron("23 7 * * *", "כל בוקר 07:23"), manual, code("brief", MAIN.brief, [260, 100])],
     connections: { ...link("כל בוקר 07:23", "Copilot"), ...link("בדיקה ידנית", "Copilot") },
+  },
+  "5-calendar-sync": {
+    name: "Copilot · סנכרון יומן Google, קריאה בלבד (כל שעה)",
+    nodes: [cron("5 7-22 * * *", "כל שעה"), manual, code("calendar", MAIN.calendar, [260, 100])],
+    connections: { ...link("כל שעה", "Copilot"), ...link("בדיקה ידנית", "Copilot") },
   },
   "4-reminders": {
     name: "Copilot · תזכורות הגשה ומבחן (18:00)",

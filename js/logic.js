@@ -421,6 +421,84 @@
     return Math.max(0, Math.min(cap, Math.round((Math.max(0, free) / 60) * 2) / 2));
   }
 
+  /** תווית דחיפות קצרה ובולטת לפי הימים שנשארו: באיחור, היום, מחר, עוד יומיים. אחרת null. */
+  function dueBadge(daysLeft) {
+    if (daysLeft === null || daysLeft === undefined || Number.isNaN(daysLeft)) return null;
+    if (daysLeft < 0) return { text: daysLeft === -1 ? "באיחור של יום" : `באיחור של ${-daysLeft} ימים`, cls: "now" };
+    if (daysLeft === 0) return { text: "היום", cls: "now" };
+    if (daysLeft === 1) return { text: "מחר", cls: "soon" };
+    if (daysLeft === 2) return { text: "עוד יומיים", cls: "soon" };
+    return null;
+  }
+
+  // ---------- מדד: כמה מהתוכנית היומית בוצעה ----------
+  /**
+   * log: { "YYYY-MM-DD": [מזהי משימות שהיו בתוכנית של אותו בוקר] }.
+   * isDone(id): האם המשימה הושלמה. נספרים רק ימים שעברו (לא היום), בחלון של `days` ימים אחורה.
+   * מחזיר { days: כמה ימים נספרו, planned, done, pct } וב-pct הערך null כשאין עדיין נתונים.
+   */
+  function adherence(log, isDone, now, days) {
+    const today = iso(now), from = iso(addDays(now, -(days || 14)));
+    let n = 0, planned = 0, done = 0;
+    for (const [d, ids] of Object.entries(log || {})) {
+      if (d >= today || d < from || !ids || !ids.length) continue;
+      n++; planned += ids.length; done += ids.filter(isDone).length;
+    }
+    return { days: n, planned, done, pct: planned ? Math.round((done / planned) * 100) : null };
+  }
+
+  // ---------- יומן Google: מאירועים לזמן תפוס (שלב 3, פונקציות טהורות) ----------
+  const CAL_TZ = "Asia/Jerusalem";
+
+  /** שעון קיר באזור הזמן: מחזיר { date: "YYYY-MM-DD", min: דקות מחצות }. מתחשב במעבר שעון חורף וקיץ. */
+  function wallClock(dateTime, tz) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz || CAL_TZ, hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    }).formatToParts(new Date(dateTime));
+    const g = (t) => parts.find((p) => p.type === t).value;
+    return { date: `${g("year")}-${g("month")}-${g("day")}`, min: Number(g("hour")) * 60 + Number(g("minute")) };
+  }
+  const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+  /**
+   * events: אירועים בצורת Google Calendar (start/end עם dateTime, status, transparency).
+   * מחזיר קטעי זמן תפוס ליום אחד, בפורמט שמקבלת freeHoursToday: [{ start: "HH:MM", end: "HH:MM" }].
+   * מדלגים על: אירוע שבוטל, אירוע שמסומן "פנוי", אירוע של יום שלם, ואירוע שהאפליקציה עצמה כתבה.
+   */
+  function calendarBusyForDay(events, dateIso, tz) {
+    const out = [];
+    for (const e of events || []) {
+      if (e.status === "cancelled" || e.transparency === "transparent") continue;
+      if (!e.start || !e.start.dateTime || !e.end || !e.end.dateTime) continue; // יום שלם
+      if (e.extendedProperties && e.extendedProperties.private && e.extendedProperties.private.copilot) continue;
+      const s = wallClock(e.start.dateTime, tz), f = wallClock(e.end.dateTime, tz);
+      if (s.date > dateIso || f.date < dateIso) continue;
+      const a = s.date < dateIso ? 0 : s.min;
+      const b = f.date > dateIso ? 1440 : f.min;
+      if (b > a) out.push({ start: hhmm(a), end: hhmm(b) });
+    }
+    return out.sort((x, y) => x.start.localeCompare(y.start));
+  }
+
+  /**
+   * שיעור מוקלט או בזום אפשר לצפות בו בכל שעה, ולכן אירוע ביומן שרק משקף אותו לא אמור לתפוס זמן.
+   * מסירים קטע תפוס שחופף לפחות 70 אחוז משיעור כזה. שיעור בקמפוס כבר מופחת בנפרד, והאיחוד של
+   * busyMinutes מונע ספירה כפולה.
+   */
+  function dropSessionEchoes(busy, sessions) {
+    const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const flexible = (sessions || []).filter((s) => s.session && (s.session.recorded || s.session.online));
+    return (busy || []).filter((b) => {
+      const a = toMin(b.start), z = toMin(b.end);
+      return !flexible.some((s) => {
+        const sa = toMin(s.start), sz = toMin(s.end);
+        const overlap = Math.min(z, sz) - Math.max(a, sa);
+        return overlap > 0 && overlap / Math.min(z - a, sz - sa) >= 0.7;
+      });
+    });
+  }
+
   /**
    * Catch-up queue from the pace tracker. Fresh items (≤7 days) are due before the next tutorial
    * (lectures) or within a week. Older backlog is spread out: `perDay` items per day, oldest first,
@@ -595,13 +673,49 @@
     lines.push("END:VCALENDAR");
     return lines.join("\r\n");
   }
+  // ---------- בריאות הסנכרון ----------
+  // כמה שעות בלי ריצה מוצלחת נחשבות תקינות. סנכרון מודל רץ עד 22:00 ומתחדש ב-07:00, ולכן המרווח הלילי הוא 9 שעות.
+  const SYNC_LABEL = { "1-moodle-sync": "סנכרון מודל", "2-email-changes": "סנכרון מייל", "3-briefs": "תדריך בוקר", "4-reminders": "תזכורות", "5-calendar-sync": "סנכרון יומן" };
+  const SYNC_MAX_HOURS = { "1-moodle-sync": 12, "2-email-changes": 10, "3-briefs": 30, "4-reminders": 30, "5-calendar-sync": 3 };
+
+  /** rows: שורות sync_state. מחזיר { status: none|ok|stale|failing, text, items } */
+  function syncHealth(rows, now) {
+    const items = [];
+    for (const r of rows || []) {
+      if (!SYNC_LABEL[r.source]) continue;
+      const age = r.last_success ? (now - new Date(r.last_success)) / 3600000 : Infinity;
+      const status = r.failures > 0 ? "failing" : age > SYNC_MAX_HOURS[r.source] ? "stale" : "ok";
+      items.push({ source: r.source, label: SYNC_LABEL[r.source], status, ageHours: age, error: r.last_error || "" });
+    }
+    if (!items.length) return { status: "none", text: "", items };
+    const bad = items.filter((i) => i.status !== "ok");
+    const status = bad.some((i) => i.status === "failing") ? "failing" : bad.length ? "stale" : "ok";
+    const when = (h) => (h === Infinity ? "אף פעם" : h < 1 ? "לפני פחות משעה" : h < 48 ? `לפני ${Math.round(h)} שעות` : `לפני ${Math.round(h / 24)} ימים`);
+    const text = bad.length
+      ? bad.map((i) => `${i.label}: ${i.status === "failing" ? "נכשל, ההצלחה האחרונה " : "לא רץ, ההצלחה האחרונה "}${when(i.ageHours)}`).join(" · ")
+      : "כל האוטומציות רצו בזמן";
+    return { status, text, items };
+  }
+
   function hash(s) {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return h;
   }
 
+  // ---------- safe rendering (shared by the app, tested here) ----------
+  // Text that came from outside (email, Moodle, the model) is escaped before it goes into innerHTML.
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  }
+  // A link is allowed only if it is http(s) or mailto. javascript: and data: become an empty string.
+  function safeUrl(u) {
+    const t = String(u == null ? "" : u).trim();
+    return /^(https?:\/\/|mailto:)/i.test(t) ? t : "";
+  }
+
   const api = {
+    escapeHtml, safeUrl,
     DAY_NAMES, SESSION_LABEL, TIERS,
     parseDate, iso, addDays, daysUntil, fmt, fmtLong, startOfWeek, withTime,
     sessionOccurrences, coursePace, paceStatus, seenKey, sessionsOnDate, weekSessions,
@@ -609,6 +723,7 @@
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
     deadlineId, nextSessionAfter, applyRemote,
     estimateEffort, buildPlan, freeHoursToday, busyMinutes, catchupItems,
+    syncHealth, SYNC_LABEL, calendarBusyForDay, dropSessionEchoes, adherence, dueBadge,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;

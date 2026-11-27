@@ -19,7 +19,7 @@ Built for Hebrew (RTL) first. No framework, no build step.
 | **Approach** | One prioritization function ranks every task by effort and slack, so the app shows one "now" task and a plan sized to today's free hours. |
 | **Stack** | Vanilla JavaScript, Supabase (Postgres, row-level security), n8n, Claude API for email interpretation, GitHub Actions |
 | **My part** | Designed and directed the product and its rules, used it daily across a seven-course semester; Claude Code implemented. See [How it was built](#how-it-was-built). |
-| **Proof** | 42 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
+| **Proof** | 78 tests in CI, a live demo, and a documented security model. The demo interface is in Hebrew (right to left). |
 
 ![Today view](docs/screenshots/today.png)
 
@@ -83,7 +83,7 @@ flowchart LR
     DB[(Postgres + RLS)]
     Auth[Auth<br/>magic link]
   end
-  subgraph n8n[n8n, self-hosted]
+  subgraph GH[GitHub Actions, hourly schedule]
     W1[Moodle sync]
     W2[Email changes]
     W3[Morning brief]
@@ -92,10 +92,12 @@ flowchart LR
   UI <-->|publishable key + user JWT| DB
   UI --> Auth
   W1 & W2 & W3 & W4 -->|secret key| DB
+  W1 & W2 & W3 & W4 -->|heartbeat| Sync[(sync_state)]
+  Sync -. late or failing .-> UI
   Moodle[Moodle iCal feed] --> W1
   Mail[IMAP inbox] --> W2
   W2 <-->|structured output| Claude[Claude API]
-  L -. bundled into .-> n8n
+  L -. same code runs in .-> GH
 ```
 
 The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The short version:
@@ -112,6 +114,7 @@ The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARC
 | Moodle sync | every 3 hours | Reads the Moodle iCal feed, matches each event to a course by its course number, upserts deadlines and alerts on new ones |
 | Email changes *(off)* | new email (IMAP) | Extracts cancellations, make-ups, moves and new deadlines; applies confident ones, queues uncertain ones for approval |
 | Morning brief | daily 07:23, weekly on Sunday | Today's classes, top priorities, pace per course, what changed |
+| Calendar sync *(off until configured)* | hourly, 07:00-22:00 | Reads busy hours only (never titles) from Google Calendar, read-only; the plan then subtracts them from free time. Setup: [docs/CALENDAR_SETUP.he.md](docs/CALENDAR_SETUP.he.md) |
 | Reminders | daily 18:00 | Due tomorrow, large submission in 3 days, time to start exam prep, unwatched lecture before tomorrow's tutorial |
 
 The email workflow ships disabled: Gmail over IMAP needs an app password, which Google only offers on accounts with 2-Step Verification turned on. Everything else runs.
@@ -131,7 +134,9 @@ Safety rules for the email workflow: email content is treated as data, never as 
 npm test
 ```
 
-42 tests, zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
+78 tests (28 logic, 38 automations, 12 UI smoke), zero dependencies, run in CI on every push. They cover session counting against a known timetable, grade rules, the planner, iCal parsing in the real Moodle format, email interpretation rules, and end-to-end execution of all four generated workflows in a simulated n8n runtime.
+
+The UI smoke tests (`npm run test:ui`, about 10 seconds) open the demo in a headless Chrome or Edge over the DevTools protocol, with the date and time pinned (`?today=` and `?now=`). They check: no console errors, one task plus today's plan, tab switching, that "done" and "seen" are saved in localStorage and never reach the cloud, that an empty semester does not break the page, that grades and settings are saved, and that nothing scrolls sideways at 375px. A failed test saves a screenshot to `test-results/` (CI uploads it as an artifact). Personal data, cloud settings and the network are mocked, so the result is the same on every machine. Set `CHROME_PATH` if no browser is found; locally the test skips without one, in CI it fails.
 
 ## Run it
 
@@ -156,7 +161,7 @@ automations/lib/        Moodle, email, briefs, Supabase helper
 automations/build.js    generates automations/workflows/*.json
 automations/run-local.js run one automation without n8n
 supabase/schema.sql     tables and RLS policies
-tests/                  logic and automation tests
+tests/                  logic, automation and UI smoke tests
 tools/serve.js          dependency-free static server
 tools/shots.js          reproducible documentation screenshots (DevTools protocol)
 tools/icons.js          generates the app icons from one SVG

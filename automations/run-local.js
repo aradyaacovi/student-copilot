@@ -3,12 +3,16 @@
 //   node automations/run-local.js 3-briefs   מריץ workflow (1-moodle-sync / 3-briefs / 4-reminders)
 const fs = require("fs");
 const path = require("path");
-const { loadEnv, missingKeys } = require("./env.js");
+const { loadEnv, missingKeys, invalidKeys } = require("./env.js");
+const { makeSupa, recordRun } = require("./lib/common.js");
+const L = require("../js/logic.js");
 const envPath = path.join(__dirname, ".env");
 // בענן (GitHub Actions) אין קובץ .env: ההגדרות מגיעות ממשתני סביבה.
 const env = loadEnv(fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "", process.env);
 const http = async (o) => {
-  const res = await fetch(o.url, { method: o.method, headers: o.headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
+  // גוף שכבר מחרוזת (למשל טופס של Google) נשלח כמו שהוא. אובייקט נשלח כ-JSON.
+  const body = o.body === undefined ? undefined : typeof o.body === "string" ? o.body : JSON.stringify(o.body);
+  const res = await fetch(o.url, { method: o.method, headers: o.headers, body });
   const text = await res.text();
   if (!res.ok) throw new Error(`${o.method} ${o.url.split("?")[0]} → HTTP ${res.status}: ${text.slice(0, 300)}`);
   if (o.json === false) return text;
@@ -19,6 +23,8 @@ const http = async (o) => {
   const what = process.argv[2];
   const missing = missingKeys(env, what);
   if (missing.length) throw new Error("חסרות הגדרות: " + missing.join(", ") + " (בקובץ automations/.env או כסוד ב-GitHub)");
+  const bad = invalidKeys(env, what);
+  if (bad.length) throw new Error("הערך נראה שגוי (כתובת חייבת להתחיל ב-https://, USER_ID הוא 36 תווים): " + bad.join(", "));
   if (what === "upload") {
     global.window = {};
     require("../data/my-semester.js");
@@ -32,6 +38,32 @@ const http = async (o) => {
   const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "workflows", what + ".json"), "utf8"));
   const code = wf.nodes.find((n) => n.type === "n8n-nodes-base.code").parameters.jsCode;
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => [] });
+  const supa = makeSupa(http, env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+  const heartbeat = (err) => recordRun(supa, env.USER_ID, what, err, new Date(), L.SYNC_LABEL);
+  // המייל נקרא מג׳ימייל (IMAP). הספריות מותקנות בענן בלבד, ומעבירים אותן פנימה כדי שהבדיקות ירוצו בלי רשת.
+  let mail = null;
+  if (what === "2-email-changes") {
+    const { fetchNewMail, describeMailError } = require("./fetch-mail.js");
+    try {
+      mail = await fetchNewMail({ address: env.GMAIL_ADDRESS, password: env.GMAIL_APP_PASSWORD }, { ImapFlow: require("imapflow").ImapFlow, simpleParser: require("mailparser").simpleParser });
+    } catch (e) {
+      // כשל בהתחברות לג׳ימייל חייב להיות מדווח באפליקציה, לא רק בלוג של GitHub.
+      const msg = describeMailError(e);
+      await heartbeat(msg);
+      throw new Error(msg);
+    }
+  }
+  const inputs = mail ? mail.items : [];
+  let out;
+  try {
+    out = await new AsyncFunction("$env", "$input", code).call({ helpers: { httpRequest: http } }, env, { all: () => inputs });
+  } catch (e) {
+    if (mail) await mail.close();
+    await heartbeat(e.message); // הדופק נרשם גם בכשל, כדי שהאפליקציה תדע ולא תשתוק
+    throw e;
+  }
+  if (mail) await mail.markDone();
+  await heartbeat(null);
   console.log(wf.name, "→", JSON.stringify(out.map((o) => o.json)));
-})().catch((e) => { console.error("נכשל:", e.message); process.exit(1); });
+})().catch((e) => { const why = e.cause && (e.cause.code || e.cause.name); // קוד שגיאה בלבד (למשל ENOTFOUND), בלי כתובות וערכים
+  console.error("נכשל:", e.message + (why ? " (" + why + ")" : "")); process.exit(1); });
