@@ -184,6 +184,8 @@ function interpret(result, e, data, L) {
 const RE_CANCEL = /(בוטל|מבוטל|ביטול|לא תתקיים|לא יתקיים|cancel)/i;
 const RE_EXTRA = /(השלמה|make-?up)/i;
 const RE_MOVED = /(הוזז|הזזה|נדחה|דחייה|שינוי מועד|שינוי חדר|מעבר לזום|בזום|rescheduled|moved|postpone|room change|zoom)/i;
+// ניסוחי הזזה עמומים ("הועברה", "תועבר", "יוזז"): נקלטים כהזזה, אבל תמיד בביטחון נמוך, כלומר לאישור ולא אוטומטית.
+const RE_MOVED_SOFT = /(הועבר|תועבר|יועבר|יוזז|תוזז)/;
 const RE_DEADLINE = /(הגשה|להגיש|בוחן|מבחן|deadline|due)/i;
 
 function findDates(text, mailDate) {
@@ -206,17 +208,18 @@ function ruleExtract(e, data, L) {
   const low = text.toLowerCase();
   const hits = data.courses.filter((c) => [c.name, c.short, c.code].filter((x) => x && String(x).length >= 3).some((x) => low.includes(String(x).toLowerCase())));
   const course = hits.length === 1 ? hits[0] : null;
-  let type = null;
+  let type = null, soft = false;
   if (RE_CANCEL.test(text)) type = "cancelled";
   else if (RE_EXTRA.test(text)) type = "extra";
   else if (RE_MOVED.test(text)) type = "moved";
+  else if (RE_MOVED_SOFT.test(text)) { type = "moved"; soft = true; }
   else if (RE_DEADLINE.test(text)) type = /בוחן|מבחן/.test(text) ? "exam_change" : "deadline";
   if (!type) return { relevant: false, summary: "", items: [] };
   const session = /(תרגול|תרגיל|tutorial)/i.test(text) ? "tutorial" : /(מעבדה|סדנה|workshop)/i.test(text) ? "workshop" : /(הרצאה|lecture)/i.test(text) ? "lecture" : "none";
   const dates = findDates(text, e.date);
   const times = [...text.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2]}`);
   const zoom = /(זום|zoom)/i.test(text);
-  const sure = !!(course && dates.length && type);
+  const sure = !!(course && dates.length && type) && !soft;
   return {
     relevant: true,
     summary: e.subject.slice(0, 120),
