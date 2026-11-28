@@ -23,13 +23,18 @@ The thresholds live in `SYNC_MAX_HOURS` in [logic.js](../js/logic.js): Moodle 12
 | Layer | Catches | Misses |
 | --- | --- | --- |
 | Heartbeat in the app | A run that fails and a run that never happened | Supabase itself being down: the heartbeat lives in the same database |
+| `uptime` workflow, from GitHub | Supabase paused or unreachable, the demo site down | Stale data while the project is up (that is the heartbeat's job) |
 | One inbox alert per day per automation | Repeated failure, without a flood | Failures before the first alert |
 | GitHub email on a failed run | Crashes and bad secrets | A disabled schedule (GitHub pauses scheduled workflows after 60 days of repository inactivity) |
 | Manual failure drill (`drill` input, [runbook](RUNBOOK.he.md)) | That the alert path still works | Nothing automatic |
 
-## Known gap
+## Outside check
 
-Monitoring that lives inside the system it watches fails with it. A paused Supabase project (it has happened) silences the heartbeat and the app too. The fix is a check from outside, for example a free uptime ping on a Supabase health endpoint. Not built yet.
+Monitoring that lives inside the system it watches fails with it. A paused Supabase project (it has happened) silences the heartbeat and the app too. The `uptime` workflow ([.github/workflows/uptime.yml](../.github/workflows/uptime.yml)) runs every 6 hours on GitHub, requests the demo page and the Supabase auth health endpoint, and fails the run when either does not answer. GitHub then emails the owner.
+
+To switch on the Supabase half, add the repository secret `SUPABASE_ANON_KEY` (the publishable key already in `js/config.js`). Until it exists the check skips with a notice and only the demo page is checked.
+
+Limits: GitHub may delay a scheduled run by minutes, and it pauses scheduled workflows after 60 days without repository activity, so this is a safety net, not a guarantee.
 
 ## Error budget
 

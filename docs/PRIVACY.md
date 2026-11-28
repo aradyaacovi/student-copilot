@@ -23,7 +23,7 @@ Not stored: passwords, email bodies (the email workflow reads them to extract a 
 | GitHub | Code, and run logs | The repository and its logs are public, so logs carry counts and error codes only. A lint rule blocks `console.log` in the shared code. |
 | Anthropic API | Email text and the course list | Only when the email workflow is on. It is off. |
 | Google | An OAuth read-only calendar token | Only when calendar sync is on. |
-| Google Fonts | The visitor's IP address when the page loads the font | A known trade-off. Self-hosting the fonts removes it. |
+| jsDelivr | The visitor's IP address, when the Supabase library loads | Pinned with a subresource integrity hash. Fonts are self-hosted, so Google receives nothing. |
 
 ## Rights, and how each is met
 
@@ -46,4 +46,4 @@ Not stored: passwords, email bodies (the email workflow reads them to extract a 
 
 - No in-app "delete my account" button. Deletion is a manual step in Supabase, which is fine for one user and must change before there are more.
 - No retention rule: old `inbox` and `events` rows stay until deleted. A scheduled cleanup at the end of each semester would be the simple fix.
-- Fonts are loaded from Google.
+- The Supabase library still loads from a CDN, even in demo mode. Bundling it, or loading it only when cloud is configured, would remove the last third-party request.

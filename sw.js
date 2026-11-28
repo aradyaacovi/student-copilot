@@ -5,13 +5,14 @@
  * is never a reload behind. Images: cache first, since they do not change under the same name.
  * Supabase requests are never cached – a stale deadline is worse than an offline message.
  */
-const VERSION = "v20";
+const VERSION = "v21";
 const SHELL = "shell-" + VERSION;
 const RUNTIME = "runtime-" + VERSION;
 
 // Files the app needs to start. Optional ones (personal data, cloud config) may not exist.
 const REQUIRED = ["./", "./index.html", "./css/style.css", "./js/logic.js", "./js/app.js",
   "./data/sample-semester.js", "./manifest.webmanifest",
+  "./fonts/rubik-hebrew.woff2", "./fonts/rubik-latin.woff2", "./fonts/space-grotesk-latin.woff2",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 const OPTIONAL = ["./data/my-semester.js", "./js/config.js"];
 

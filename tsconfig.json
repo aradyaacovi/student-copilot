@@ -1,0 +1,14 @@
+{
+  "//": "Development-only type check. The app has no build step and no dependencies; TypeScript is fetched on demand by `npm run typecheck`.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true
+  },
+  "include": ["js/logic.js"]
+}
