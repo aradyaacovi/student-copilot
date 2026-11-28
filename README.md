@@ -100,7 +100,7 @@ flowchart LR
   L -. same code runs in .-> GH
 ```
 
-The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The short version:
+More diagrams (data model, automation run, email decision flow, planner, CI/CD): [docs/DIAGRAMS.md](docs/DIAGRAMS.md). The design decisions and their trade-offs are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The short version:
 
 - **One logic module, two runtimes.** `js/logic.js` is pure (no DOM, no I/O). The browser loads it directly, and a small build script bundles the same file into the n8n Code nodes, so the morning brief and the app can never disagree about priorities.
 - **Workflows are generated, not hand-edited.** `automations/build.js` produces the n8n JSON from tested source in `automations/lib/`. The test suite executes the generated workflow code against a fake Supabase, Moodle and Claude.

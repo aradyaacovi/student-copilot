@@ -708,23 +708,46 @@
       <p class="small muted">נספרים ימים שעברו בלבד. משימה שהושלמה בדיעבד נחשבת. הנתונים נשמרים רק אצלך.</p></details></div>`;
   }
 
+  // הקוד הזה רץ בדף Moodle (לא באפליקציה), ולכן חייב להיות עצמאי: בלי משתנים מהסביבה של האפליקציה
+  async function moodleCollector(app) {
+    const txt = (el) => (el ? el.innerText.trim() : "");
+    const rows = [...document.querySelectorAll("table tr")].map((tr) => { const c = tr.querySelectorAll("td,th"); return c.length >= 2 ? { name: txt(c[0]), grade: txt(c[1]) } : null; }).filter(Boolean);
+    if (!rows.length) { alert("לא נמצאה טבלת ציונים. פתחי את דוח הציונים הכללי."); return; }
+    const submitted = [];
+    const links = [...document.querySelectorAll("table a[href*='mode=grade']")].slice(0, 60);
+    await Promise.all(links.map(async (a) => {
+      try {
+        const doc = new DOMParser().parseFromString(await (await fetch(a.href, { credentials: "same-origin" })).text(), "text/html");
+        doc.querySelectorAll("table tr").forEach((tr) => {
+          const c = tr.querySelectorAll("td,th");
+          if (c.length < 3) return;
+          const grade = (c[2].textContent || "").trim();
+          const lines = (c[0].textContent || "").split("\n").map((x) => x.trim()).filter(Boolean);
+          if (grade === "הוגש" && lines.length) submitted.push({ course: a.textContent.trim(), item: lines[lines.length - 1].replace(/^מטלה/, "").trim() });
+        });
+      } catch (e) { /* קורס שנכשל נדלג עליו */ }
+    }));
+    window.open(app + "#moodle=" + encodeURIComponent(JSON.stringify({ rows, submitted })));
+  }
   function moodleBookmarklet() {
-    const app = location.origin + location.pathname;
-    const code = "(()=>{const rows=[...document.querySelectorAll('table tr')].map(tr=>{const c=tr.querySelectorAll('td,th');return c.length>=2?{name:c[0].innerText.trim(),grade:c[1].innerText.trim()}:null}).filter(Boolean);if(!rows.length){alert('לא נמצאה טבלת ציונים. פתחי את דוח הציונים הכללי.');return}window.open('" + app + "#moodle='+encodeURIComponent(JSON.stringify(rows)))})()";
-    return "javascript:" + encodeURIComponent(code);
+    return "javascript:" + encodeURIComponent("(" + moodleCollector.toString() + ")(" + JSON.stringify(location.origin + location.pathname) + ")");
   }
   function importMoodleFromHash() {
     if (!location.hash.startsWith("#moodle=") || new URLSearchParams(location.search).has("demo")) return;
-    let rows = [];
-    try { rows = JSON.parse(decodeURIComponent(location.hash.slice(8))).slice(0, 200); } catch { rows = []; }
+    let payload = {};
+    try { payload = JSON.parse(decodeURIComponent(location.hash.slice(8))); } catch { payload = {}; }
     history.replaceState(null, "", location.pathname + location.search);
-    const m = L.matchMoodleGrades(rows, courses);
-    if (!m.length) { toast("לא נמצאו ציונים שמתאימים לקורסים שלך"); return; }
-    const lines = m.map((x) => x.courseName + ": " + x.grade);
-    if (!confirm(["לשמור את הציונים האלה?", "", ...lines].join(String.fromCharCode(10)))) return;
-    state.moodle = { at: todayIso, grades: Object.fromEntries(m.map((x) => [x.courseId, x.grade])) };
+    const rows = (Array.isArray(payload) ? payload : payload.rows || []).slice(0, 200);
+    const grades = L.matchMoodleGrades(rows, courses);
+    const subs = L.matchSubmitted((payload.submitted || []).slice(0, 300), courses, deadlineItems()).filter((x) => !state.done[x.id]);
+    if (!grades.length && !subs.length) { toast("לא נמצא ב-Moodle משהו שמתאים לקורסים שלך"); return; }
+    const nl = String.fromCharCode(10);
+    const msg = ["לשמור מ-Moodle?", "", ...(grades.length ? ["ציונים:", ...grades.map((x) => x.courseName + ": " + x.grade)] : []), ...(subs.length ? ["", "הגשות שיסומנו כבוצעו:", ...subs.map((x) => x.courseName + " – " + x.title)] : [])].join(nl);
+    if (!confirm(msg)) return;
+    if (grades.length) state.moodle = { at: todayIso, grades: Object.fromEntries(grades.map((x) => [x.courseId, x.grade])) };
+    subs.forEach((x) => { state.done[x.id] = true; });
     save();
-    toast("הציונים נשמרו ✓");
+    toast("נשמר מ-Moodle ✓");
   }
   function viewSettings() {
     const srcText = { sample: "נתוני הדגמה (data/sample-semester.js)", mine: "הקובץ שלך (data/my-semester.js)", import: "נתונים שייבאת לדפדפן הזה", cloud: "הענן (Supabase)" }[source];

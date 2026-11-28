@@ -817,8 +817,30 @@
    * השם ב-Moodle כולל סמסטר, שנה ופרטים נוספים, לכן משווים שם מנורמל: הקורס מותאם רק אם שמו מוכל בשם ב-Moodle, ורק אם הוא מתאים לשורה אחת.
    * שורה בלי ציון מספרי מדולגת. כל התאמה חד-משמעית בלבד: ספק = לא מתאים.
    */
+  function normName(s) {
+    return String(s || "").replace(/סמסטר|סמ\s*\d|קב\s*\d|תש[א-ת"׳']+|\d{4}|[()\-–,.׳"']/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  /**
+   * מטלות שהוגשו ב-Moodle (קורס + שם פריט) מול ההגשות שבאפליקציה. מחזיר רק התאמות חד-משמעיות:
+   * הקורס מוכל בשם ב-Moodle, ושם הפריט שווה (אחרי נרמול) לכותרת של הגשה אחת בלבד באותו קורס.
+   */
+  function matchSubmitted(submitted, courses, deadlines) {
+    const out = [];
+    const seen = new Set();
+    for (const s of submitted || []) {
+      const c = (courses || []).filter((x) => normName(s.course).includes(normName(x.name)));
+      if (c.length !== 1) continue;
+      const item = normName(s.item);
+      if (!item) continue;
+      const hits = (deadlines || []).filter((d) => d.courseId === c[0].id && normName(d.title) === item);
+      if (hits.length === 1 && !seen.has(hits[0].id)) { seen.add(hits[0].id); out.push({ id: hits[0].id, title: hits[0].title, courseName: c[0].name }); }
+    }
+    return out;
+  }
+
   function matchMoodleGrades(rows, courses) {
-    const norm = (s) => String(s || "").replace(/סמסטר|סמ\s*\d|קב\s*\d|תש[א-ת"׳']+|\d{4}|[()\-–,.׳"']/g, " ").replace(/\s+/g, " ").trim();
+    const norm = normName;
     const out = [];
     const used = new Set();
     for (const r of rows || []) {
@@ -834,7 +856,7 @@
   const api = {
     escapeHtml, safeUrl,
     DAY_NAMES, SESSION_LABEL, TIERS,
-    parseDate, iso, addDays, matchMoodleGrades, daysUntil, fmt, fmtLong, startOfWeek, withTime,
+    parseDate, iso, addDays, matchMoodleGrades, matchSubmitted, daysUntil, fmt, fmtLong, startOfWeek, withTime,
     sessionOccurrences, coursePace, paceStatus, seenKey, sessionsOnDate, weekSessions,
     courseGrade, neededExam, averages, prioritize, examPrepDays, buildIcs,
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
