@@ -395,10 +395,17 @@
       const pct = p.items.length ? Math.round((seenCount / p.items.length) * 100) : 0;
       const next = deadlineItems().find((d) => d.courseId === c.id && !d.moedB && L.daysUntil(d.date, now) >= 0 && !state.done[d.id]);
       const unseen = p.items.filter((i) => !i.seen);
+      // שורת מצב אחת: כמה מטלות פתוחות, מתי הדחופה, וצפי ציון רק אם הוזנו ציונים
+      const openTasks = deadlineItems().filter((d) => d.courseId === c.id && !d.moedB && L.daysUntil(d.date, now) >= 0 && !state.done[d.id]);
+      const gr = state.grades[c.id] ? L.courseGrade(c, state.grades[c.id]) : null;
+      const status = [
+        openTasks.length ? `${openTasks.length} ${openTasks.length === 1 ? "מטלה פתוחה" : "מטלות פתוחות"} · הדחופה ${daysText(L.daysUntil(next.date, now))}` : "אין מטלות פתוחות",
+        gr && (gr.grade !== null || gr.projected !== null) ? `צפי ציון ${r1(gr.grade !== null ? gr.grade : gr.projected)}` : "",
+      ].filter(Boolean).join(" · ");
       return `<div class="card course-bar" style="--c:${c.color}">
         <h3><button class="link title" data-course="${c.id}">${esc(c.name)}</button><span class="spacer"></span>
           ${p.behind ? `<span class="badge ${p.items.some((i) => i.urgent) ? "now" : "soon"}">מאחור ב-${p.behind}</span>` : p.items.length ? `<span class="badge ok">בקצב</span>` : ""}</h3>
-        <div class="small muted">${next ? `הבא: ${esc(next.title)} · ${L.fmt(next.date)}` : "אין הגשות קרובות"}</div>
+        <div class="small">${status}</div>
         <div class="progress"><span style="width:${pct}%"></span></div>
         ${unseen.length ? `<details><summary class="small">לסמן מה ראיתי (${unseen.length} לא מסומנים)</summary>
           <div class="seen-list" style="margin-top:8px">${p.items.map((i) => `
