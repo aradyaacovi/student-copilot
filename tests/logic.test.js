@@ -337,3 +337,15 @@ test("matchMoodleGrades: מתאים לפי שם מנורמל, מדלג על צי
   assert.deepEqual(m.map((x) => [x.courseId, x.grade]), [["sim", 100], ["reg", 91.5]]); // סימולציה פעם אחת בלבד
   assert.deepEqual(L.matchMoodleGrades(null, courses), []);
 });
+
+test("matchSubmitted: מסמן רק התאמה חד-משמעית של קורס ושם מטלה", () => {
+  const courses = [{ id: "sad", name: "ניתוח ועיצוב מערכות מידע" }, { id: "sim", name: "סימולציה" }];
+  const deadlines = [{ id: "d1", courseId: "sad", title: "תרגיל בית 1" }, { id: "d2", courseId: "sad", title: "תרגיל בית 2" }, { id: "d3", courseId: "sim", title: "תרגיל בית 1" }];
+  const sub = [
+    { course: "ניתוח ועיצוב מערכות מידע - סמסטר א'", item: "תרגיל בית 1" },
+    { course: "קורס אחר", item: "תרגיל בית 1" },
+    { course: "סימולציה סמ 1", item: "מטלה שלא קיימת" },
+  ];
+  assert.deepEqual(L.matchSubmitted(sub, courses, deadlines).map((x) => x.id), ["d1"]);
+  assert.deepEqual(L.matchSubmitted(null, courses, deadlines), []);
+});

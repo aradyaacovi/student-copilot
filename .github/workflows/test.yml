@@ -9,7 +9,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 20 }
+      - run: node tools/lint.js
       - run: node tests/logic.test.js
+      - run: node tests/migrations.test.js
       - run: node tests/automations.test.js
         env: { TZ: Asia/Jerusalem }
       - run: node tests/ui.smoke.test.js

@@ -15,8 +15,10 @@
   },
   "scripts": {
     "start": "node tools/serve.js",
-    "test": "node tests/logic.test.js && node tests/automations.test.js && node tests/ui.smoke.test.js",
+    "test": "node tools/lint.js && node tests/logic.test.js && node tests/migrations.test.js && node tests/automations.test.js && node tests/ui.smoke.test.js",
     "test:logic": "node tests/logic.test.js",
+    "test:migrations": "node tests/migrations.test.js",
+    "lint": "node tools/lint.js",
     "test:automations": "node tests/automations.test.js",
     "test:ui": "node tests/ui.smoke.test.js",
     "build:automations": "node automations/build.js",
