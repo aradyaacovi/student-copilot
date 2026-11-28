@@ -725,6 +725,13 @@
           const lines = (c[0].textContent || "").split("\n").map((x) => x.trim()).filter(Boolean);
           if (grade === "הוגש" && lines.length) submitted.push({ course: a.textContent.trim(), item: lines[lines.length - 1].replace(/^מטלה/, "").trim() });
         });
+        // סטטוס הגשה אמיתי נמצא בדף המטלה עצמו ("הוגש למתן ציון"). בדוח הציונים הוא מופיע רק אחרי שהמרצה נתן ציון.
+        await Promise.all([...doc.querySelectorAll("a[href*='mod/assign/view.php']")].slice(0, 40).map(async (l) => {
+          try {
+            const page = await (await fetch(new URL(l.getAttribute("href"), location.href).href, { credentials: "same-origin" })).text();
+            if (page.includes("הוגש למתן ציון")) submitted.push({ course: a.textContent.trim(), item: l.textContent.trim() });
+          } catch (e) { /* מטלה שנכשלה נדלג עליה */ }
+        }));
       } catch (e) { /* קורס שנכשל נדלג עליו */ }
     }));
     window.open(app + "#moodle=" + encodeURIComponent(JSON.stringify({ rows, submitted })));
