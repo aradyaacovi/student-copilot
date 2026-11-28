@@ -833,7 +833,15 @@
       if (c.length !== 1) continue;
       const item = normName(s.item);
       if (!item) continue;
-      const hits = (deadlines || []).filter((d) => d.courseId === c[0].id && normName(d.title) === item);
+      let hits = (deadlines || []).filter((d) => d.courseId === c[0].id && normName(d.title) === item);
+      if (!hits.length) {
+        // שם מטלה שמכיל תאריך ("תיבת הגשה חלק א - 26.11.26"): התאמה לפי תאריך, רק אם הוא יחיד באותו קורס
+        const m = String(s.item).match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/);
+        if (m) {
+          const iso = `${+m[3] < 100 ? 2000 + +m[3] : +m[3]}-${String(+m[2]).padStart(2, "0")}-${String(+m[1]).padStart(2, "0")}`;
+          hits = (deadlines || []).filter((d) => d.courseId === c[0].id && d.date === iso);
+        }
+      }
       if (hits.length === 1 && !seen.has(hits[0].id)) { seen.add(hits[0].id); out.push({ id: hits[0].id, title: hits[0].title, courseName: c[0].name }); }
     }
     return out;
