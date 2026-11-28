@@ -6,7 +6,7 @@
 
   // ---------- state ----------
   const state = Object.assign(
-    { seen: {}, done: {}, reviewed: {}, grades: {}, tasks: [], notes: {}, previous: null, dataOverride: null, target: 85, assume: 85, tab: "today", theme: "auto", reviews: true, courseId: null, snooze: {}, dailyHours: 4 },
+    { seen: {}, done: {}, reviewed: {}, grades: {}, tasks: [], notes: {}, topics: {}, previous: null, dataOverride: null, target: 85, assume: 85, tab: "today", theme: "auto", reviews: true, courseId: null, snooze: {}, dailyHours: 4 },
     new URLSearchParams(location.search).has("demo") ? {} : JSON.parse(localStorage.getItem(STORE) || "{}")
   );
   if (new URLSearchParams(location.search).has("demo") && window.SAMPLE_DATA.demoState) Object.assign(state, JSON.parse(JSON.stringify(window.SAMPLE_DATA.demoState)));
@@ -114,7 +114,7 @@
   // ---------- cloud (Supabase) ----------
   const cfg = window.COPILOT_CONFIG || {};
   const cloud = { client: null, user: null, status: "off", error: "" };
-  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "previous", "target", "assume", "reviews", "log"];
+  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "topics", "previous", "target", "assume", "reviews", "log"];
 
   async function cloudInit() {
     if (DEMO || !cfg.supabaseUrl || !cfg.supabaseAnonKey) return;
@@ -668,7 +668,10 @@
             ${s.link && L.safeUrl(s.link) ? ` <a class="small" href="${esc(L.safeUrl(s.link))}" target="_blank" rel="noopener">לסיכום</a>` : ""}<ul>${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`).join("") : `<div class="empty">עוד אין סיכומים.</div>`}
           <button class="link" data-sumcourse="${c.id}" data-tab="summaries">להוסיף סיכום ←</button>
         </div>
-      </div>`;
+      </div>
+      ${(() => { const tps = state.topics[c.id] || []; return `<details class="card" style="margin-top:14px"><summary><b>🧠 נושאים למבחן</b> <span class="muted small">${tps.filter((x) => x.done).length}/${tps.length} נחזרו</span></summary>
+        <ul class="clean">${tps.map((x, i) => `<li class="row"><label class="seen-item ${x.done ? "seen" : ""}"><input type="checkbox" data-topic="${c.id}|${i}" ${x.done ? "checked" : ""}> ${esc(x.title)}</label><span class="spacer"></span><button class="link small" data-deltopic="${c.id}|${i}">מחיקה</button></li>`).join("") || `<li class="empty">עוד אין נושאים. מוסיפים ידנית, מהסילבוס או מהסיכומים.</li>`}</ul>
+        <form id="addTopic" class="row" style="margin-top:8px"><input type="hidden" name="courseId" value="${c.id}"><input name="title" placeholder="נושא חדש" required maxlength="120"><button>הוספה</button></form></details>`; })()}`;
   }
 
   function appCard() {
@@ -752,7 +755,7 @@
     }
     const cb = e.target.closest("[data-cloud]");
     if (cb) return cloudAction(cb.dataset.cloud, cb);
-    const t = e.target.closest("[data-plandone],[data-snooze],[data-seenall],[data-course],[data-tab],[data-week],[data-action],[data-deltask],[data-sumcourse],[data-delnote]");
+    const t = e.target.closest("[data-plandone],[data-snooze],[data-seenall],[data-course],[data-tab],[data-week],[data-action],[data-deltask],[data-sumcourse],[data-delnote],[data-deltopic]");
     if (!t) return;
     if (t.dataset.plandone) {
       const id = t.dataset.plandone, snap = snapState();
@@ -774,6 +777,7 @@
     else if (t.dataset.deltask) { state.tasks = state.tasks.filter((x) => x.id !== t.dataset.deltask); save(); }
     else if (t.dataset.sumcourse) summaryCourse = t.dataset.sumcourse;
     else if (t.dataset.delnote !== undefined) { (state.notes[summaryCourse] || []).splice(Number(t.dataset.delnote), 1); save(); }
+    else if (t.dataset.deltopic !== undefined) { const [cid, i] = t.dataset.deltopic.split("|"); (state.topics[cid] || []).splice(Number(i), 1); save(); }
     else if (t.dataset.action) return action(t.dataset.action);
     render();
   });
@@ -802,6 +806,7 @@
     const d = t.dataset;
     if (d.done) { state.done[d.done] = t.checked; toast(t.checked ? "סומן כבוצע ✓" : "בוטל הסימון"); }
     else if (d.seen) { if (t.checked) state.seen[d.seen] = todayIso; else delete state.seen[d.seen]; toast(t.checked ? "סומן: ראיתי ✓" : "בוטל הסימון"); }
+    else if (d.topic) { const [cid, i] = d.topic.split("|"); const tp = (state.topics[cid] || [])[Number(i)]; if (tp) tp.done = t.checked; }
     else if (d.review) { state.reviewed[d.review] = true; toast("חזרה סומנה ✓"); }
     else if (d.settingStr) { state[d.settingStr] = t.value; }
     else if (d.settingBool) { state[d.settingBool] = t.checked; }
@@ -851,6 +856,9 @@
         id: "t" + Date.now(), title: f.get("title"), courseId: f.get("courseId") || null,
         date: f.get("date") || null, time: f.get("time") || null, weight: Number(f.get("weight")) || 0, hours: Number(f.get("hours")) || 0,
       });
+    } else if (e.target.id === "addTopic") {
+      const title = String(f.get("title") || "").trim();
+      if (title) (state.topics[f.get("courseId")] = state.topics[f.get("courseId")] || []).push({ title: title.slice(0, 120), done: false });
     } else if (e.target.id === "addNote") {
       (state.notes[summaryCourse] = state.notes[summaryCourse] || []).push({
         session: f.get("session"), title: f.get("title"), date: f.get("date"), link: f.get("link"),
