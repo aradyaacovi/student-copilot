@@ -77,7 +77,7 @@ function connect(wsUrl) {
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const browser = findBrowser();
-  const port = 9333;
+  const port = +process.env.SHOTS_PORT || 9333;
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "shots-"));
   const proc = spawn(browser, [
     "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--no-default-browser-check",
