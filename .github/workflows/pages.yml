@@ -24,15 +24,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # index.html also loads two files that are git-ignored on purpose: the
-      # student's own semester data and the Supabase config. Empty stubs keep the
-      # public demo's console clean without shipping anything private.
-      - name: Stub the optional local files
+      # student's own semester data and the Supabase config. The semester data is
+      # always an empty stub (it is personal and never ships). The Supabase config
+      # is written from repository variables when they are set, so people can sign
+      # in on the published site; the URL and the publishable key are meant for
+      # browsers (row-level security protects the data). Never put a service_role
+      # key in these variables.
+      - name: Write the optional local files
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: |
-          : > js/config.js
           : > data/my-semester.js
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            printf 'window.COPILOT_CONFIG = { supabaseUrl: "%s", supabaseAnonKey: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > js/config.js
+            echo "cloud=1" >> "$GITHUB_ENV"
+          else
+            : > js/config.js
+          fi
 
-      # The public site has no data of its own, so send a bare visit to the demo.
+      # Without a cloud config the site has no data of its own, so send a bare
+      # visit to the demo. With one, a bare visit is the real app (sign in).
       - name: Default the published site to the demo
+        if: env.cloud != '1'
         run: |
           sed -i 's#</head>#  <script>if(!location.search)location.replace(location.pathname+"?demo=1");</script>\n</head>#' index.html
 
