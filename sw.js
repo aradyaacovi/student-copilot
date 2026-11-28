@@ -12,6 +12,7 @@ const RUNTIME = "runtime-" + VERSION;
 // Files the app needs to start. Optional ones (personal data, cloud config) may not exist.
 const REQUIRED = ["./", "./index.html", "./css/style.css", "./js/logic.js", "./js/app.js",
   "./data/sample-semester.js", "./manifest.webmanifest",
+  "./fonts/rubik-hebrew.woff2", "./fonts/rubik-latin.woff2", "./fonts/space-grotesk-latin.woff2",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 const OPTIONAL = ["./data/my-semester.js", "./js/config.js"];
 

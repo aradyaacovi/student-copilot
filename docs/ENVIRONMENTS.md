@@ -14,7 +14,7 @@ Status: **local and production exist. Staging is designed here but not created y
 
 ## Release flow
 
-1. Branch and pull request. CI runs lint, logic, migration, automation and UI tests.
+1. Branch and pull request. CI runs lint, type check, logic, migration, automation and UI tests, and the coverage gate.
 2. If the change adds a migration: run the new file in **staging** first. Check the app against it.
 3. Merge to `main`. Pages deploys the demo automatically.
 4. Run the same migration in **production** (SQL Editor). Migrations are safe to re-run, see [supabase/migrations/README.md](../supabase/migrations/README.md).

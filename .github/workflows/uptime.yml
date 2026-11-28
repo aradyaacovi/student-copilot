@@ -1,0 +1,45 @@
+name: uptime
+
+# An outside check on the things the in-app heartbeat cannot see (ADR 0003, docs/SLO.md).
+# The heartbeat is stored in Supabase, so a paused or unreachable project silences it too.
+# This job lives on GitHub, asks the project directly, and fails loudly (GitHub emails the owner).
+# It uses no actions and only the publishable (anon) key, which is safe to expose to the browser anyway.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Public demo is up
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 "https://aradyaacovi.github.io/student-copilot/?demo=1")
+          echo "demo: HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Supabase project is up
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::notice::SUPABASE_URL or SUPABASE_ANON_KEY is not set, skipping"; exit 0
+          fi
+          # The auth health endpoint answers 200 while the project is running.
+          # A paused project answers with an error page or does not answer at all.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 \
+            -H "apikey: $SUPABASE_ANON_KEY" "${SUPABASE_URL%/}/auth/v1/health")
+          echo "supabase auth health: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase did not answer healthy. If it is paused, restore it in the dashboard (Project Settings, General)."
+            exit 1
+          fi

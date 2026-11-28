@@ -803,7 +803,7 @@
     banner.textContent = DEMO ? "מצב הדגמה · נתונים לדוגמה, שום דבר לא נשמר" : "מצב הדגמה: מוצגים נתונים לדוגמה. כדי לראות את שלך – ליצור data/my-semester.js (ראי README) או לטעון אותו בהגדרות.";
     renderFocus();
     const v = VIEWS[state.tab];
-    document.getElementById("view").innerHTML = (v.parent ? `<button class="link back" data-tab="${v.parent}">→ חזרה ל${VIEWS[v.parent].title}</button>` : "") + v.render();
+    document.getElementById("view").innerHTML = `<h2 class="sr-only">${v.title}</h2>` + (v.parent ? `<button class="link back" data-tab="${v.parent}">→ חזרה ל${VIEWS[v.parent].title}</button>` : "") + v.render();
   }
 
   document.addEventListener("click", (e) => {

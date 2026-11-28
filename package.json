@@ -24,7 +24,9 @@
     "build:automations": "node automations/build.js",
     "automation": "node automations/run-local.js",
     "shots": "node tools/shots.js",
-    "export": "node tools/export-csv.js"
+    "export": "node tools/export-csv.js",
+    "typecheck": "npx --yes -p typescript@5 tsc -p tsconfig.json",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=85 --test-coverage-exclude=data/** --test-coverage-exclude=tests/** tests/logic.test.js tests/automations.test.js tests/migrations.test.js"
   },
   "dependencies": {},
   "devDependencies": {}

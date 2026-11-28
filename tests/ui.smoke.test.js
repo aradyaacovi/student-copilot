@@ -198,8 +198,9 @@ async function scenarios() {
       return v && (Object.keys(v.done || {}).length + Object.keys(v.seen || {}).length + Object.keys(v.reviewed || {}).length + Object.keys(v.snooze || {}).length) ? v : null;
     }, "state saved");
     ok(s, "nothing saved");
+    await evaluate(`window.__beforeReload = true`); // gone once the new document replaces this one
     await cdp.send("Page.reload");
-    await until(() => evaluate(`!!document.querySelector("#focus .focus-title")`), "reload render");
+    await until(() => evaluate(`!window.__beforeReload && !!document.querySelector("#focus .focus-title")`), "reload render");
     const after = await evaluate(`document.querySelector("#focus .focus-title").textContent.trim()`);
     ok(after !== first, "the same task is still first after reload: " + first);
     ok(!requests.some(isCloud), "cloud request: " + requests.filter(isCloud).join(", "));
@@ -344,13 +345,12 @@ async function main() {
           if (pathname === "/data/my-semester.js") return reply("text/javascript", "");   // personal data: never loaded
           if (pathname === "/js/config.js") return reply("text/javascript", mocks.config);
           // The real page pins the CDN script with SRI (checked in logic.test.js). The stub below cannot match that hash, so only here the integrity attributes are dropped.
-          if (pathname === "/index.html") return reply("text/html", fs.readFileSync(path.join(ROOT, "index.html"), "utf8").replace(/ integrity="[^"]*"| crossorigin="[^"]*"/g, ""));
+          if (pathname === "/index.html") return reply("text/html", fs.readFileSync(path.join(ROOT, "index.html"), "utf8").replace(/<script[^>]*>/g, (tag) => tag.replace(/ integrity="[^"]*"| crossorigin="[^"]*"/g, "")));
           if (pathname === "/favicon.ico") return reply("image/x-icon", "");
           if (pathname === "/tools-smoke-reset") return reply("text/html", "<!doctype html><title>reset</title>");
           return cdp.send("Fetch.continueRequest", { requestId: p.requestId });
         }
         if (url.includes("supabase")) return reply("text/javascript", STUB);
-        if (url.includes("fonts.googleapis.com")) return reply("text/css", "");
         return reply("text/plain", ""); // anything else stays offline
       }
     });

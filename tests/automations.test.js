@@ -473,7 +473,7 @@ test("workflows: כל action מקובע ל-SHA מלא עם הערת גרסה (ו
   const dir = path.join(__dirname, "../.github/workflows");
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".yml"))) {
     const uses = fs.readFileSync(path.join(dir, f), "utf8").split("\n").filter((l) => /^\s*(- )?uses:/.test(l));
-    assert.ok(uses.length, f);
+    // a workflow with no third-party actions (uptime.yml uses only curl) has nothing to pin
     for (const l of uses) assert.ok(/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/.test(l), f + ": " + l.trim());
   }
   assert.ok(/package-ecosystem: github-actions/.test(fs.readFileSync(path.join(__dirname, "../.github/dependabot.yml"), "utf8")));

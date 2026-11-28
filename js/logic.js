@@ -5,6 +5,39 @@
 (function (root) {
   "use strict";
 
+  /**
+   * @typedef {Object} Session A recurring class rule. Counts are derived from it, never stored.
+   * @property {"lecture"|"tutorial"|"workshop"} type
+   * @property {number} day 0 = Sunday
+   * @property {string} start HH:MM
+   * @property {string} end HH:MM
+   * @property {string} [from] first date, YYYY-MM-DD
+   * @property {string} [until] last date, YYYY-MM-DD
+   * @property {number} [count] number of occurrences, instead of until
+   * @property {string[]} [cancelled] dates removed from the rule
+   * @property {Object[]} [extra] make-up sessions added on specific dates
+   * @property {string} [location] building and room
+   *
+   * @typedef {Object} Semester
+   * @property {string} start YYYY-MM-DD
+   * @property {string} end YYYY-MM-DD
+   * @property {string[]} [noStudyDates] days with no classes
+   *
+   * @typedef {Object} PlanItem One thing the student could work on.
+   * @property {string} id
+   * @property {string} title
+   * @property {string} [courseId]
+   * @property {string} date due date, YYYY-MM-DD
+   * @property {number} [weight] share of the course grade, percent
+   * @property {number} [hours] explicit effort estimate
+   * @property {number} [effort] effort override, hours
+   * @property {string} [kind] submission, exam, pace, review, custom...
+   * @property {string} [sessionType] lecture or tutorial, for catch-up items
+   * @property {string} [due] alias of date used by some sources
+   * @property {string} [snoozeUntil] hidden from the plan until this date
+   * @property {string} [reason] one-line explanation, set by buildPlan
+   */
+
   const DAY_MS = 24 * 60 * 60 * 1000;
   const DAY_NAMES = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
   const SESSION_LABEL = { lecture: "הרצאה", tutorial: "תרגול", workshop: "מפגש" };
@@ -27,7 +60,7 @@
     return r;
   }
   function daysUntil(dateStr, now) {
-    return Math.round((parseDate(dateStr) - startOfDay(now)) / DAY_MS);
+    return Math.round((parseDate(dateStr).getTime() - startOfDay(now).getTime()) / DAY_MS);
   }
   function fmt(dateStr) {
     const d = parseDate(dateStr);
@@ -49,6 +82,7 @@
 
   // ---------- sessions & pace ----------
   /** All occurrences of one recurring session (plus extras), sorted. */
+  /** @param {Session} session @param {Semester} semester @param {string|Date} [untilDate] */
   function sessionOccurrences(session, semester, untilDate) {
     const out = [];
     const skip = new Set([...(semester.noStudyDates || []), ...(session.cancelled || [])]);
@@ -301,6 +335,7 @@
 
   // ---------- focus plan: one prioritization logic ----------
   /** Estimated hours of work by kind and grade weight. `effort` on the item overrides. */
+  /** Hours of work for an item: explicit, or a default by kind and grade weight. @param {PlanItem} it @returns {number} */
   function estimateEffort(it) {
     if (it.effort) return it.effort;
     const w = it.weight || 0;
@@ -324,6 +359,7 @@
    * Sorting: smaller slack first; ties broken by grade weight.
    * Today's plan: fill `capacity` hours in order (must, then should, then pulling ahead), at most `maxChunk` hours per item per day.
    */
+  /** The one place that orders work. @param {PlanItem[]} items @param {Date} now @param {Object} [opts] */
   function buildPlan(items, now, opts) {
     const o = Object.assign({ hoursPerDay: 3, capacity: 4, maxChunk: 2 }, opts || {});
     const today = iso(now);
@@ -545,8 +581,8 @@
   /** Teaching week number (1-based) or null outside the semester. */
   function semesterWeek(semester, now) {
     const first = startOfWeek(parseDate(semester.start));
-    const n = Math.floor((startOfDay(now) - first) / (7 * DAY_MS)) + 1;
-    const total = Math.floor((startOfWeek(parseDate(semester.end)) - first) / (7 * DAY_MS)) + 1;
+    const n = Math.floor((startOfDay(now).getTime() - first.getTime()) / (7 * DAY_MS)) + 1;
+    const total = Math.floor((startOfWeek(parseDate(semester.end)).getTime() - first.getTime()) / (7 * DAY_MS)) + 1;
     return { n: n >= 1 && n <= total ? n : null, total };
   }
 
@@ -683,7 +719,7 @@
     const items = [];
     for (const r of rows || []) {
       if (!SYNC_LABEL[r.source]) continue;
-      const age = r.last_success ? (now - new Date(r.last_success)) / 3600000 : Infinity;
+      const age = r.last_success ? (now.getTime() - new Date(r.last_success).getTime()) / 3600000 : Infinity;
       const status = r.failures > 0 ? "failing" : age > SYNC_MAX_HOURS[r.source] ? "stale" : "ok";
       items.push({ source: r.source, label: SYNC_LABEL[r.source], status, ageHours: age, error: r.last_error || "" });
     }
@@ -721,7 +757,7 @@
   function semesterWeekOf(semester, dateStr) {
     const d = startOfWeek(parseDate(dateStr));
     const first = startOfWeek(parseDate(semester.start));
-    return Math.floor((d - first) / (7 * DAY_MS)) + 1;
+    return Math.floor((d.getTime() - first.getTime()) / (7 * DAY_MS)) + 1;
   }
 
   function minutesOf(hhmm) {
