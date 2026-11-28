@@ -349,3 +349,12 @@ test("matchSubmitted: מסמן רק התאמה חד-משמעית של קורס �
   assert.deepEqual(L.matchSubmitted(sub, courses, deadlines).map((x) => x.id), ["d1"]);
   assert.deepEqual(L.matchSubmitted(null, courses, deadlines), []);
 });
+
+test("matchSubmitted: שם מטלה עם תאריך מותאם לפי תאריך, רק אם הוא יחיד בקורס", () => {
+  const courses = [{ id: "sad", name: "ניתוח ועיצוב מערכות מידע" }];
+  const one = [{ id: "p", courseId: "sad", title: "פרויקט חלק א׳", date: "2026-11-26" }, { id: "q", courseId: "sad", title: "תרגיל בית 2", date: "2026-12-03" }];
+  const sub = [{ course: "ניתוח ועיצוב מערכות מידע", item: "תיבת הגשה חלק א - 26.11.26" }];
+  assert.deepEqual(L.matchSubmitted(sub, courses, one).map((x) => x.id), ["p"]);
+  const two = [...one, { id: "r", courseId: "sad", title: "עוד משהו", date: "2026-11-26" }];
+  assert.deepEqual(L.matchSubmitted(sub, courses, two), []); // שני תאריכים זהים: ספק, לא מתאים
+});
