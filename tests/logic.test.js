@@ -323,3 +323,17 @@ test("escapeHtml and safeUrl block markup and javascript: links", () => {
   for (const bad of ["javascript:alert(1)", " JaVaScRiPt:alert(1)", "data:text/html,<script>", "//evil.com", "vbscript:x", "", null, undefined]) assert.equal(L.safeUrl(bad), "");
 });
 console.log(`${passed} בדיקות עברו בסך הכול`);
+
+test("matchMoodleGrades: מתאים לפי שם מנורמל, מדלג על ציון ריק, ולא מנחש", () => {
+  const courses = [{ id: "sad", name: "ניתוח ועיצוב מערכות מידע" }, { id: "sim", name: "סימולציה" }, { id: "reg", name: "מודלים של רגרסיה ליניארית" }];
+  const rows = [
+    { name: "סימולציה סמ 1", grade: "100.00" },
+    { name: "ניתוח ועיצוב מערכות מידע - סמסטר א' - תשפ\"ז", grade: "-" },
+    { name: "מודלים של רגרסיה ליניארית סמ 1", grade: "91.5" },
+    { name: "קורס אחר לגמרי", grade: "90" },
+    { name: "סימולציה סמ 1 תגבור", grade: "80" },
+  ];
+  const m = L.matchMoodleGrades(rows, courses);
+  assert.deepEqual(m.map((x) => [x.courseId, x.grade]), [["sim", 100], ["reg", 91.5]]); // סימולציה פעם אחת בלבד
+  assert.deepEqual(L.matchMoodleGrades(null, courses), []);
+});
