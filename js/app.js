@@ -6,7 +6,7 @@
 
   // ---------- state ----------
   const state = Object.assign(
-    { seen: {}, done: {}, reviewed: {}, grades: {}, tasks: [], notes: {}, previous: null, dataOverride: null, target: 85, assume: 85, tab: "today", theme: "auto", reviews: true, courseId: null, snooze: {}, dailyHours: 4 },
+    { seen: {}, done: {}, reviewed: {}, grades: {}, tasks: [], notes: {}, moodle: { at: null, grades: {} }, previous: null, dataOverride: null, target: 85, assume: 85, tab: "today", theme: "auto", reviews: true, courseId: null, snooze: {}, dailyHours: 4 },
     new URLSearchParams(location.search).has("demo") ? {} : JSON.parse(localStorage.getItem(STORE) || "{}")
   );
   if (new URLSearchParams(location.search).has("demo") && window.SAMPLE_DATA.demoState) Object.assign(state, JSON.parse(JSON.stringify(window.SAMPLE_DATA.demoState)));
@@ -114,7 +114,7 @@
   // ---------- cloud (Supabase) ----------
   const cfg = window.COPILOT_CONFIG || {};
   const cloud = { client: null, user: null, status: "off", error: "" };
-  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "previous", "target", "assume", "reviews", "log"];
+  const STATE_KEYS = ["snooze", "dailyHours", "seen", "done", "reviewed", "grades", "tasks", "notes", "moodle", "previous", "target", "assume", "reviews", "log"];
 
   async function cloudInit() {
     if (DEMO || !cfg.supabaseUrl || !cfg.supabaseAnonKey) return;
@@ -401,6 +401,7 @@
       const status = [
         openTasks.length ? `${openTasks.length} ${openTasks.length === 1 ? "מטלה פתוחה" : "מטלות פתוחות"} · הדחופה ${daysText(L.daysUntil(next.date, now))}` : "אין מטלות פתוחות",
         gr && (gr.grade !== null || gr.projected !== null) ? `צפי ציון ${r1(gr.grade !== null ? gr.grade : gr.projected)}` : "",
+        state.moodle.grades[c.id] !== undefined ? `ב-Moodle ${r1(state.moodle.grades[c.id])}` : "",
       ].filter(Boolean).join(" · ");
       return `<div class="card course-bar" style="--c:${c.color}">
         <h3><button class="link title" data-course="${c.id}">${esc(c.name)}</button><span class="spacer"></span>
@@ -413,7 +414,11 @@
           <button class="link small" data-seenall="${c.id}" style="margin-top:8px">ראיתי הכול עד היום</button></details>` : ""}
       </div>`;
     }).join("");
+    const mg = courses.filter((c) => state.moodle.grades[c.id] !== undefined);
+    const mgW = mg.reduce((a, c) => a + (c.credits || 1), 0);
+    const mgAvg = mgW ? mg.reduce((a, c) => a + state.moodle.grades[c.id] * (c.credits || 1), 0) / mgW : null;
     return `<div class="grid">${cards}</div>
+      ${mgAvg !== null ? `<div class="card" style="margin-top:16px"><b>ממוצע לפי Moodle: ${r1(mgAvg)}</b> <span class="muted small">(${mg.length} קורסים, משוקלל בנקודות זכות · עודכן ${L.fmt(state.moodle.at)}). זה סכום ה-Moodle ולא הציון הרשמי.</span></div>` : ""}
       ${open.length ? `<div class="card" style="margin-top:16px"><h3>❓ פתוח לבירור</h3>${open.map((o) => `<label class="row"><input type="checkbox" data-done="open|${esc(o.id)}"> ${chip(o.courseId)} ${esc(o.text)}</label>`).join("")}</div>` : ""}
       <div class="row small" style="margin-top:14px"><button class="link" data-tab="reqs">טבלת הדרישות המלאה</button> · <button class="link" data-tab="summaries">כל הסיכומים</button></div>`;
   }
@@ -703,12 +708,31 @@
       <p class="small muted">נספרים ימים שעברו בלבד. משימה שהושלמה בדיעבד נחשבת. הנתונים נשמרים רק אצלך.</p></details></div>`;
   }
 
+  function moodleBookmarklet() {
+    const app = location.origin + location.pathname;
+    const code = "(()=>{const rows=[...document.querySelectorAll('table tr')].map(tr=>{const c=tr.querySelectorAll('td,th');return c.length>=2?{name:c[0].innerText.trim(),grade:c[1].innerText.trim()}:null}).filter(Boolean);if(!rows.length){alert('לא נמצאה טבלת ציונים. פתחי את דוח הציונים הכללי.');return}window.open('" + app + "#moodle='+encodeURIComponent(JSON.stringify(rows)))})()";
+    return "javascript:" + encodeURIComponent(code);
+  }
+  function importMoodleFromHash() {
+    if (!location.hash.startsWith("#moodle=") || new URLSearchParams(location.search).has("demo")) return;
+    let rows = [];
+    try { rows = JSON.parse(decodeURIComponent(location.hash.slice(8))).slice(0, 200); } catch { rows = []; }
+    history.replaceState(null, "", location.pathname + location.search);
+    const m = L.matchMoodleGrades(rows, courses);
+    if (!m.length) { toast("לא נמצאו ציונים שמתאימים לקורסים שלך"); return; }
+    const lines = m.map((x) => x.courseName + ": " + x.grade);
+    if (!confirm(["לשמור את הציונים האלה?", "", ...lines].join(String.fromCharCode(10)))) return;
+    state.moodle = { at: todayIso, grades: Object.fromEntries(m.map((x) => [x.courseId, x.grade])) };
+    save();
+    toast("הציונים נשמרו ✓");
+  }
   function viewSettings() {
     const srcText = { sample: "נתוני הדגמה (data/sample-semester.js)", mine: "הקובץ שלך (data/my-semester.js)", import: "נתונים שייבאת לדפדפן הזה", cloud: "הענן (Supabase)" }[source];
     return `<div class="grid">
       ${appCard()}
       ${cloudCard()}
       ${adherenceCard()}
+      <div class="card"><h3>🎓 ייבוא ציונים מ-Moodle</h3><div class="small">גררי את הכפתור לסרגל הסימניות. ב-Moodle, בדוח "ציונים", לחצי עליו פעם אחת: הציונים יעברו לכאן דרך הדפדפן בלבד, ותאשרי לפני השמירה.</div><p><a class="btn" href="${esc(moodleBookmarklet())}" onclick="return false">שאיבת ציונים</a></p></div>
       <div class="card"><h3>💾 גיבוי ההתקדמות שלך</h3>
         <p class="small muted">מה שסימנת (ראיתי / בוצע), ציונים, משימות וסיכומים שהוספת נשמרים רק בדפדפן. כדאי לגבות מדי פעם.</p>
         <div class="row"><button class="btn" data-action="export">ייצוא גיבוי</button>
@@ -878,6 +902,7 @@
 
   document.addEventListener("pwa-change", () => { if (state.tab === "settings") render(); });
 
+  importMoodleFromHash();
   render();
   cloudInit().catch((err) => { cloud.status = "error"; cloud.error = err.message; render(); });
 })();

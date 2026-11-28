@@ -811,10 +811,30 @@
     return [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\r\n") + "\r\n";
   }
 
+
+  /**
+   * התאמת שורות מדוח הציונים של Moodle (שם קורס + ציון) לקורסים של הסמסטר.
+   * השם ב-Moodle כולל סמסטר, שנה ופרטים נוספים, לכן משווים שם מנורמל: הקורס מותאם רק אם שמו מוכל בשם ב-Moodle, ורק אם הוא מתאים לשורה אחת.
+   * שורה בלי ציון מספרי מדולגת. כל התאמה חד-משמעית בלבד: ספק = לא מתאים.
+   */
+  function matchMoodleGrades(rows, courses) {
+    const norm = (s) => String(s || "").replace(/סמסטר|סמ\s*\d|קב\s*\d|תש[א-ת"׳']+|\d{4}|[()\-–,.׳"']/g, " ").replace(/\s+/g, " ").trim();
+    const out = [];
+    const used = new Set();
+    for (const r of rows || []) {
+      const g = Number(r && r.grade);
+      if (!isFinite(g) || g < 0 || g > 100) continue;
+      const n = norm(r.name);
+      const hits = (courses || []).filter((c) => n.includes(norm(c.name)));
+      if (hits.length === 1 && !used.has(hits[0].id)) { used.add(hits[0].id); out.push({ courseId: hits[0].id, courseName: hits[0].name, moodleName: String(r.name).slice(0, 80), grade: g }); }
+    }
+    return out;
+  }
+
   const api = {
     escapeHtml, safeUrl,
     DAY_NAMES, SESSION_LABEL, TIERS,
-    parseDate, iso, addDays, daysUntil, fmt, fmtLong, startOfWeek, withTime,
+    parseDate, iso, addDays, matchMoodleGrades, daysUntil, fmt, fmtLong, startOfWeek, withTime,
     sessionOccurrences, coursePace, paceStatus, seenKey, sessionsOnDate, weekSessions,
     courseGrade, neededExam, averages, prioritize, examPrepDays, buildIcs,
     weekLoad, semesterWeek, REVIEW_STEPS, dueReviews, layoutLanes,
